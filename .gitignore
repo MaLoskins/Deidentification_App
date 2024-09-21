@@ -10,6 +10,13 @@ Category_Mappings/
 # Ignore Plots
 Plots/
 
+# Ignore pkl files
+
+*.pkl
+
+# ignore ipynb files
+*.ipynb
+
 # Ignore all csv files
 *.csv
 
