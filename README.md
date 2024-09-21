@@ -10,7 +10,6 @@ A comprehensive Python application for data preprocessing, binning, integrity as
 - [Data Processing, Binning, and Uniquity Assessment Application](#data-processing-binning-and-uniquity-assessment-application)
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
-  - [File Structure](#file-structure)
     - [Description of Key Directories and Files](#description-of-key-directories-and-files)
   - [Installation](#installation)
   - [Usage](#usage)
@@ -42,29 +41,6 @@ A comprehensive Python application for data preprocessing, binning, integrity as
 - **Density Plots:** Visualize the distribution of original and binned data through comprehensive density plots.
 - **Unique Identification Analysis:** Analyze combinations of binned columns to determine unique identifications within the dataset.
 - **Automated Data Processing:** Streamlined preprocessing pipeline with configurable parameters and reporting.
-
-## File Structure
-├── Application.py
-├── Category_Mappings
-│   ├── {col}_mapping.csv
-│   ├── {col}_mapping.csv
-│   ├── ...
-│   └── {col}_mapping.csv
-├── Data.csv
-├── Detect_Dtypes.py
-├── Notebook_Main.ipynb
-├── Process_Data.py
-├── Processed_Data.pkl
-├── Run_Processor.py
-├── Type_Conversion_Report.csv
-├── __pycache__
-│   ├── Cache_Files.pyc
-│   └── ...
-├── data_binner.py
-├── data_integrity_assessor.py
-├── density_plotter.py
-├── requirements.txt
-└── unique_bin_identifier.py
 
 
 ### Description of Key Directories and Files
