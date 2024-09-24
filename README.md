@@ -13,7 +13,6 @@ A comprehensive Python application for data preprocessing, binning, integrity as
     - [Description of Key Directories and Files](#description-of-key-directories-and-files)
   - [Installation](#installation)
   - [Usage](#usage)
-    - [Data Processing](#data-processing)
       - [Configure Processing Parameters](#configure-processing-parameters)
       - [If not Using the Application (For Data Processing):](#if-not-using-the-application-for-data-processing)
       - [If Using Application](#if-using-application)
@@ -35,7 +34,7 @@ A comprehensive Python application for data preprocessing, binning, integrity as
 
 ## Features
 
-- **Interactive Data Upload:** Upload datasets in CSV, Pickle, or Parquet formats.
+- **Interactive Data Upload:** Upload datasets in CSV or Pickle.
 - **Dynamic Binning:** Select and bin numerical and datetime columns with customizable bin sizes.
 - **Data Integrity Assessment:** Evaluate the impact of binning on data integrity using entropy metrics.
 - **Density Plots:** Visualize the distribution of original and binned data through comprehensive density plots.
@@ -49,7 +48,6 @@ A comprehensive Python application for data preprocessing, binning, integrity as
 - **Category_Mappings:** Directory containing CSV files that map categorical variables to their respective categories.
 - **Data.csv:** The raw input dataset to be processed.
 - **Detect_Dtypes.py:** Module for detecting and converting data types of dataset columns.
-- **Notebook_Main.ipynb:** Jupyter Notebook for exploratory data analysis and visualization.
 - **Process_Data.py:** Script to preprocess and process the raw dataset.
 - **Processed_Data.pkl:** Serialized processed dataset saved in Pickle format.
 - **Run_Processor.py:** Script to execute the data processing pipeline.
@@ -66,13 +64,13 @@ A comprehensive Python application for data preprocessing, binning, integrity as
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/yourusername/data-processing-binning-app.git
-   cd data-processing-binning-app 
+   git clone https://github.com/MaLoskins/Deidentification_App.git
+   cd Deidentification_App
    ```
 
 2. **Create a Virtual Environment**
 
-    It's recommended to use a virtual environment to manage dependencies.
+    It's recommended to use a virtual environment to manage dependencies. Ensure you are using `python version 3.10.11`
 
     ```bash
     python3 -m venv venv
@@ -90,9 +88,6 @@ A comprehensive Python application for data preprocessing, binning, integrity as
 
 
 ## Usage
-
-### Data Processing
-Before running the interactive application, preprocess your data using the provided scripts.
 
 #### Configure Processing Parameters
 Modify `Process_Data.py` or `Application.py` if you need to change default processing parameters such as thresholds, file paths, or conversion settings.
@@ -112,7 +107,7 @@ python Process_Data.py
 - `Type_Conversion_Report.csv`: Details of data type conversions performed.
 - `Category_Mappings/`: Updated category mapping files for categorical variables.
 
-This will automatically convert any data set into the processed formatting. If data types need to be retained, ensure that the file is saved as either a pickle file (`.pkl`) or a parquet file (`.parquet`)
+This will automatically convert any data set into the processed formatting. If data types need to be retained, ensure that the file is saved as either a pickle file (`.pkl`) if you want to retain data types.
 
 #### If Using Application 
 
@@ -130,9 +125,9 @@ streamlit run Application.py
 Launch the interactive Streamlit application to perform further data analysis and visualization.
 
 #### Interact with the Application
-- **Upload Dataset**: Choose the file type (CSV, Pickle, Parquet) and upload your processed dataset.
+- **Upload Dataset**: Choose the file type (CSV, Pickle) and upload your processed dataset.
 - **Preview Data**: View the first few rows of your dataset.
-- **Select Columns to Bin**: Choose numerical or datetime columns for binning.
+- **Select Columns to Bin**: Choose compatible columns for binning.
 - **Configure Binning**: Adjust the number of bins for each selected column.
 - **View Binned Data**: See the categorization of binned columns and assess data integrity loss.
 - **Density Plots**: Visualize the distribution of original and binned data.
@@ -185,7 +180,7 @@ Implements the DataProcessor class to preprocess the raw dataset, detect and con
 **Key Features**:
 - Reads and cleans input data.
 - Detects data types using `Detect_Dtypes`.
-- Saves processed data in specified formats (CSV, Pickle, Parquet).
+- Saves processed data in specified formats (CSV, Pickle).
 - Generates category mapping files for categorical variables.
 
 #### `Detect_Dtypes.py`
@@ -208,7 +203,7 @@ Contains the DtypeDetector class that detects and converts data types of DataFra
 - **Processing Options**:
   - `return_category_mappings`: Whether to save category mappings.
   - `parallel_processing`: Enable or disable parallel processing.
-  - `save_type`: Format to save processed data (csv, pickle, parquet).
+  - `save_type`: Format to save processed data (csv, pickle).
 - **Thresholds**:
   - `date_threshold`: Threshold for date detection.
   - `numeric_threshold`: Threshold for numeric detection.
