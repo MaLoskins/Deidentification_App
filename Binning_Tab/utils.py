@@ -71,13 +71,22 @@ def run_processing(save_type='csv', output_filename='Processed_Data.csv', file_p
             save_type=save_type
         )
         processor.process()
+        return output_filepath
     except Exception as e:
         st.error(f"Error during data processing: {e}")
         st.stop()
 
 def load_data(file_type, uploaded_file):
     """
-    Loads and processes the uploaded file, saving processed data to the designated directories.
+    Loads the uploaded file into a Pandas DataFrame without any processing.
+
+    Parameters:
+        file_type (str): Type of the uploaded file ('csv' or 'pkl').
+        uploaded_file (UploadedFile): The uploaded file object.
+
+    Returns:
+        pd.DataFrame: The loaded DataFrame.
+        str: Error message if any, else None.
     """
     if uploaded_file is None:
         return None, "No file uploaded!"
@@ -89,24 +98,16 @@ def load_data(file_type, uploaded_file):
             "csv": "csv"
         }.get(file_type, "csv")  # Default to 'csv' if type is unrecognized
 
-        # Ensure output directories exist
-        create_output_directories()
-
         # Create a temporary file with the correct extension
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as tmp_file:
             tmp_file.write(uploaded_file.getbuffer())
             temp_file_path = tmp_file.name
 
+        # Read the data into a DataFrame
         if file_type == "pkl":
-            save_type = 'pickle'
-            output_filename = 'Processed_Data.pkl'
-            run_processing(save_type=save_type, output_filename=output_filename, file_path=temp_file_path)
-            Data = pd.read_pickle(os.path.join(PROCESSED_DATA_DIR, output_filename))
+            Data = pd.read_pickle(temp_file_path)
         elif file_type == "csv":
-            save_type = 'csv'
-            output_filename = 'Processed_Data.csv'
-            run_processing(save_type=save_type, output_filename=output_filename, file_path=temp_file_path)
-            Data = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, output_filename))  
+            Data = pd.read_csv(temp_file_path)
         else:
             return None, "Unsupported file type!"
 
@@ -185,3 +186,95 @@ def load_dataframe(file_path, file_type):
     except Exception as e:
         st.error(f"Error loading DataFrame: {e}")
         st.stop()
+
+def get_binning_configuration(Data, selected_columns):
+    """
+    Generates binning configuration sliders for selected columns.
+
+    Args:
+        Data (pd.DataFrame): The DataFrame containing the data.
+        selected_columns (list): List of columns selected for binning.
+
+    Returns:
+        dict: A dictionary with column names as keys and number of bins as values.
+    """
+    bins = {}
+    st.markdown("### 📏 Binning Configuration")
+
+    # Define layout parameters
+    cols_per_row = 2  # Number of sliders per row
+    num_cols = len(selected_columns)
+    rows = num_cols // cols_per_row + (num_cols % cols_per_row > 0)
+
+    current_col = 0
+
+    for row in range(rows):
+        # Create a new row of columns
+        cols = st.columns(cols_per_row)
+        
+        for col_idx in range(cols_per_row):
+            if current_col < num_cols:
+                column = selected_columns[current_col]
+                max_bins = Data[column].nunique()
+                min_bins = 2 if max_bins >= 2 else 1  # At least 2 bins if possible
+                default_bins = min(10, max_bins) if max_bins >= 2 else 1  # Default to 10 or max_unique if lower
+
+                with cols[col_idx]:
+                    if pd.api.types.is_datetime64_any_dtype(Data[column]):
+                        default_bins = min(6, max_bins) if max_bins >= 2 else 1
+                        bins[column] = st.slider(
+                            f'📏 {column} (Datetime)', 
+                            min_value=1, 
+                            max_value=max_bins,
+                            value=default_bins,
+                            key=column
+                        )
+                    elif pd.api.types.is_integer_dtype(Data[column]):
+                        if max_bins > 2:
+                            bins[column] = st.slider(
+                                f'📏 {column} (Integer)', 
+                                min_value=2, 
+                                max_value=max_bins, 
+                                value=default_bins,
+                                key=column
+                            )
+                        elif max_bins == 2:
+                            st.write(f'📏 **{column} (Integer):** 2 (Fixed)')
+                            bins[column] = 2
+                        else:
+                            st.write(f'📏 **{column} (Integer):** {max_bins} (Fixed)')
+                            bins[column] = max_bins
+                    elif pd.api.types.is_float_dtype(Data[column]):
+                        if max_bins > 2:
+                            bins[column] = st.slider(
+                                f'📏 {column} (Float)', 
+                                min_value=2, 
+                                max_value=max_bins, 
+                                value=default_bins,
+                                key=column
+                            )
+                        elif max_bins == 2:
+                            st.write(f'📏 **{column} (Float):** 2 (Fixed)')
+                            bins[column] = 2
+                        else:
+                            st.write(f'📏 **{column} (Float):** {max_bins} (Fixed)')
+                            bins[column] = max_bins
+                    else:
+                        if max_bins > 1:
+                            bins[column] = st.slider(
+                                f'📏 {column}', 
+                                min_value=1, 
+                                max_value=max_bins, 
+                                value=default_bins,
+                                key=column
+                            )
+                        elif max_bins == 1:
+                            st.write(f'📏 **{column}:** 1 (Fixed)')
+                            bins[column] = 1
+                        else:
+                            st.write(f'📏 **{column}:** {max_bins} (Fixed)')
+                            bins[column] = max_bins
+
+                current_col += 1
+
+    return bins

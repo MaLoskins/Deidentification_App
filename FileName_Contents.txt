@@ -1,0 +1,1759 @@
+"Application.py"
+
+```
+# Application.py
+
+import streamlit as st
+import pandas as pd
+from Binning_Tab.data_binner import DataBinner
+from Binning_Tab.density_plotter import DensityPlotter
+from Binning_Tab.data_integrity_assessor import DataIntegrityAssessor
+from Binning_Tab.unique_bin_identifier import UniqueBinIdentifier
+import matplotlib.pyplot as plt
+import os
+import tempfile
+import traceback  # For detailed error logging
+
+# Import utility functions and directory constants
+from Binning_Tab.utils import (
+    hide_streamlit_style,
+    load_data,
+    align_dataframes,
+    save_dataframe,
+    run_processing,
+    PLOTS_DIR,
+    PROCESSED_DATA_DIR,
+    REPORTS_DIR,
+    UNIQUE_IDENTIFICATIONS_DIR,
+    get_binning_configuration  # Ensure correct function signature
+)
+
+# Set Streamlit page configuration
+st.set_page_config(
+    page_title="🛠️ Data Processing and Binning Application",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# Apply custom styling
+hide_streamlit_style()
+
+# Streamlit app starts here
+st.title('🛠️ Data Processing and Binning Application')
+
+# Sidebar for inputs and options
+with st.sidebar:
+    st.header("📂 Upload & Settings")
+    uploaded_file = st.file_uploader("📤 Upload your dataset", type=['csv', 'pkl'])
+    file_type = st.selectbox('📁 Select Output File Type', ['csv', 'pkl'], index=0)
+    st.markdown("---")
+
+    # Display warning if csv is the selected file type
+    if file_type == 'csv':
+        st.warning("⚠️ **Note:** Using CSV may result in loss of data types and categories. This will affect subsequent processes. Incompatible columns will be removed from binning as a result. Consider using Pickle for better preservation.")
+
+    st.header("⚙️ Binning Options")
+    binning_method = st.selectbox('🔧 Select Binning Method', ['Quantile', 'Equal Width'])
+    if binning_method == 'Quantile':
+        st.warning("⚠️ **Note:** Using Quantile binning will prevent the output of 'Original Data' Density Plots due to granularity.")
+    st.markdown("---")
+
+    st.header("ℹ️ About")
+    st.info("""
+        This application allows you to upload a dataset, process and bin numerical and datetime columns, 
+        assess data integrity post-binning, visualize data distributions, and perform unique identification analysis.
+    """)
+
+# Main content area
+if uploaded_file is not None:
+    # Load the raw data
+    try:
+        with st.spinner('Loading data...'):
+            Data, error = load_data(file_type, uploaded_file)
+        if error:
+            st.error(error)
+            st.stop()
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        st.error(traceback.format_exc())
+        st.stop()
+
+    # Store raw data in session state
+    st.session_state.Data = Data.copy()
+    
+    # Display original data preview
+    st.subheader('📊 Data Preview (Original Data)')
+    st.dataframe(st.session_state.Data.head())
+
+    # Select columns to bin (only numeric and datetime, excluding identifiers)
+    run_processing(save_type=file_type, output_filename=f'processed_data.{file_type}', file_path=f'Data.csv')
+
+    # Load the processed data
+    if file_type == 'csv':
+        processed_data = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{file_type}'))
+    else:
+        processed_data = pd.read_pickle(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{file_type}'))
+    
+    st.session_state.Processed_Data = processed_data.copy()
+
+
+    COLUMNS_THAT_CAN_BE_BINNED = st.session_state.Processed_Data.select_dtypes(
+        include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]' ]
+    ).columns.tolist()
+    COLUMNS_THAT_CAN_BE_BINNED = [col for col in COLUMNS_THAT_CAN_BE_BINNED]
+
+    selected_columns = st.multiselect('🔢 Select columns to bin', COLUMNS_THAT_CAN_BE_BINNED, key='selected_columns')
+
+    if selected_columns:
+        # copy of data frame with only selected columns temp saved as Data.csv or Data.pkl
+            
+        # Use the utility function to get binning configuration
+        if file_type == 'csv':
+            processed_data = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{file_type}'))
+        else:
+            processed_data = pd.read_pickle(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{file_type}'))
+        try:
+            bins = get_binning_configuration(processed_data, selected_columns)  # Corrected argument order
+        except Exception as e:
+            st.error(f"Error in binning configuration: {e}")
+            st.stop()
+
+        # Binning process
+        st.markdown("### 🔄 Binning Process")
+        try:
+            with st.spinner('Binning data...'):
+                binner = DataBinner(processed_data, method=binning_method.lower())
+                binned_df, binned_columns = binner.bin_columns(bins)
+                
+                # Align both DataFrames (original and binned) to have the same columns
+                Data_aligned, binned_df_aligned = align_dataframes(processed_data, binned_df)
+                
+                # Extract the list of binned columns
+                binned_columns_list = [col for cols in binned_columns.values() for col in cols]
+        except Exception as e:
+            st.error(f"Error during binning: {e}")
+            st.error(traceback.format_exc())  # Detailed error log
+            st.stop()
+        
+        st.success("✅ Binning completed successfully!")
+
+        # Display binned columns categorization
+        st.markdown("### 🗂️ Binned Columns Categorization")
+        for dtype, cols in binned_columns.items():
+            if cols:
+                st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
+
+        # **Important:** Exclude identifier columns from integrity assessment
+        original_for_assessment = Data_aligned[selected_columns].astype('category')  # Convert to categorical
+        binned_for_assessment = binned_df_aligned[selected_columns]  # Already categorical from DataBinner
+
+        # Integrity assessment after binning
+        st.markdown("### 📄 Integrity Loss Report")
+        try:
+            assessor = DataIntegrityAssessor(original_df=original_for_assessment, binned_df=binned_for_assessment)
+            assessor.assess_integrity_loss()
+            report = assessor.generate_report()
+            
+            # Save the report to the 'reports' directory
+            report_filename = 'Integrity_Loss_Report.csv'
+            report_path = save_dataframe(report, 'csv', report_filename, 'reports')
+            
+            st.dataframe(report)
+            
+            overall_loss = assessor.get_overall_loss()
+            st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
+            
+            st.markdown("### 📈 Entropy")
+            try:
+                fig_entropy = assessor.plot_entropy(figsize=(15, 4))  # Create the entropy plot
+                # Save the entropy plot
+                entropy_plot_path = os.path.join(PLOTS_DIR, 'entropy_plot.png')
+                fig_entropy.savefig(entropy_plot_path, bbox_inches='tight')
+                plt.close(fig_entropy)  # Close the figure to free memory
+                # Display in Streamlit
+                st.pyplot(fig_entropy)  # to display
+            except Exception as e:
+                st.error(f"Error plotting entropy: {e}")
+                st.error(traceback.format_exc())  # Detailed error log
+        except Exception as e:
+            st.error(f"Error during integrity assessment: {e}")
+            st.error(traceback.format_exc())  # Detailed error log
+
+        # Tabs for Original and Binned Density Plots
+        st.markdown("### 📈 Density Plots")
+        if len(selected_columns) > 1:
+            density_tab1, density_tab2 = st.tabs(["Original Data", "Binned Data"])
+            
+            with density_tab1:
+                try:
+                    plotter_orig = DensityPlotter(
+                        dataframe=original_for_assessment,  # Use original categorical data
+                        category_columns=selected_columns,
+                        figsize=(15, 4),                     
+                        save_path=None,  # We'll handle saving manually
+                        plot_style='ticks'
+                    )
+                    
+                    # Save the original density plot
+                    original_density_plot_path = os.path.join(PLOTS_DIR, 'original_density_plots.png')
+                    fig_orig = plotter_orig.plot_grid()
+                    fig_orig.savefig(original_density_plot_path, bbox_inches='tight')
+                    plt.close(fig_orig)  # Close the figure to free memory
+                    st.pyplot(fig_orig)
+                except Exception as e:
+                    st.error(f"Error plotting original data density: {e}")
+                    st.error(traceback.format_exc())  # Detailed error log
+            
+            with density_tab2:
+                try:
+                    plotter_binned = DensityPlotter(
+                        dataframe=binned_for_assessment,  # Use user-specified binned data
+                        category_columns=selected_columns,
+                        figsize=(15, 4),                     
+                        save_path=None,  # We'll handle saving manually
+                        plot_style='ticks'
+                    )
+                    
+                    # Save the binned density plot
+                    fig_binned = plotter_binned.plot_grid()  # Get the figure object
+                    binned_density_plot_path = os.path.join(PLOTS_DIR, 'binned_density_plots.png')
+                    fig_binned.savefig(binned_density_plot_path, bbox_inches='tight')
+                    plt.close(fig_binned)  # Close the figure to free memory
+                    st.pyplot(fig_binned)
+                except Exception as e:
+                    st.error(f"Error plotting binned data density: {e}")
+                    st.error(traceback.format_exc())  # Detailed error log
+        else:
+            # Print a message if only one column is selected
+            st.info("🔄 **Please select more than one column to display density plots.**")
+        
+        st.markdown("---")
+
+        # Download binned data
+        st.markdown("### 💾 Download Binned Data")
+        # Choose file type again for download of bin data
+        file_type_download = st.selectbox('📁 Select Download File Type', ['csv', 'pkl'], index=0, key='download_file_type')
+        try:
+            if file_type_download == 'csv':
+                binned_csv = binned_df_aligned.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Binned Data as CSV",
+                    data=binned_csv,
+                    file_name='binned_data.csv',
+                    mime='text/csv',
+                )
+            elif file_type_download == 'pkl':
+                # Save pickle to the 'processed_data' directory
+                pickle_filename = 'binned_data.pkl'
+                pickle_path = save_dataframe(binned_df_aligned, 'pkl', pickle_filename, 'processed_data')
+                
+                with open(pickle_path, 'rb') as f:
+                    binned_pkl = f.read()
+                
+                st.download_button(
+                    label="📥 Download Binned Data as Pickle",
+                    data=binned_pkl,
+                    file_name='binned_data.pkl',
+                    mime='application/octet-stream',
+                )
+        except Exception as e:
+            st.error(f"Error during data download: {e}")
+            st.error(traceback.format_exc())  # Detailed error log
+
+        # Unique Identification Analysis
+        st.markdown("### 🔍 Unique Identification Analysis")
+        with st.expander("ℹ️ **About:**"):
+            st.write("""
+                This section analyzes combinations of binned columns to determine how many unique observations
+                in the original dataset can be uniquely identified by each combination of bins.
+                It helps in understanding the discriminative power of your binned features.
+            """)
+
+        # Use a form to group inputs and button together
+        with st.form("unique_id_form"):
+            st.write("#### 🧮 Configure Unique Identification Analysis")
+            # Define bin columns to consider (use all binned columns)
+            bin_columns_list = list(binned_for_assessment.columns)
+            
+            # Set combination sizes with input validation
+            col_count = len(bin_columns_list)
+            col1, col2 = st.columns(2)
+            with col1:
+                min_comb_size = st.number_input('Minimum Combination Size', min_value=1, max_value=col_count, value=1, step=1)
+            with col2:
+                max_comb_size = st.number_input('Maximum Combination Size', min_value=min_comb_size, max_value=col_count, value=col_count, step=1)
+            
+            if max_comb_size > 5:
+                st.warning("⚠️  **Note:** Combinations larger than 5 may take a long time to compute depending on bin count.")
+            # Submit button
+            submit_button = st.form_submit_button(label='🧮 Perform Unique Identification Analysis')
+
+        if submit_button:
+            try:
+                with st.spinner('🔍 Analyzing unique identifications... This may take a while for large datasets.'):
+                    # Initialize the UniqueBinIdentifier
+                    identifier = UniqueBinIdentifier(original_df=original_for_assessment, binned_df=binned_for_assessment)
+                    
+                    # Perform unique identification analysis
+                    results = identifier.find_unique_identifications(
+                        min_comb_size=min_comb_size, 
+                        max_comb_size=max_comb_size, 
+                        columns=bin_columns_list
+                    )
+                    
+                    # Display the results
+                    st.success("✅ Unique Identification Analysis Completed!")
+                    st.write("📄 **Unique Identification Results:**")
+                    st.dataframe(results.head(20))  # Show top 20 for brevity
+                    
+                    # Save the results to 'unique_identifications' directory
+                    unique_id_filename = 'unique_identifications.csv'
+                    unique_id_path = save_dataframe(results, 'csv', unique_id_filename, 'unique_identifications')
+                    
+                    # Allow user to download the results
+                    csv = results.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Results as CSV",
+                        data=csv,
+                        file_name='unique_identifications.csv',
+                        mime='text/csv',
+                    )
+            except Exception as e:
+                st.error(f"Error during unique identification analysis: {e}")
+                st.error(traceback.format_exc())  # Detailed error log
+    else:
+        st.info("🔄 **Please select at least one column to bin.**")
+else:
+    st.info("🔄 **Please upload a file to get started.**")
+
+```
+
+"extract.py"
+
+```
+# extract.py
+
+import os
+import argparse
+
+def parse_arguments():
+    """
+    Parses command-line arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description='Search for files with specific formats and write their contents to a text file.'
+    )
+
+    parser.add_argument(
+        '-d', '--directory',
+        type=str,
+        default=r"C:\Users\matth\OneDrive\Desktop\1. DATA SCIENCE MASTER\Capstone_CITS5553\Application",
+        help='The directory to search. Default is "C:\\Users\\matth\\OneDrive\\Desktop\\1. DATA SCIENCE MASTER\\Research_CITS5014\\MY_OWN_GAT"'
+    )
+
+    parser.add_argument(
+        '-f', '--formats',
+        type=str,
+        nargs='+',
+        default=[".py"],
+        help='One or more file formats to search for (e.g., .py .txt .ipynb). Default is ".py"'
+    )
+
+    parser.add_argument(
+        '-i', '--ignore',
+        type=str,
+        nargs='*',
+        default=[],
+        help='One or more directories to ignore. Default is to always ignore ".venv"'
+    )
+
+    return parser.parse_args()
+
+def main():
+    """
+    Main function to execute the script logic.
+    """
+    args = parse_arguments()
+    search_dir = args.directory
+    file_formats = set(args.formats)
+    
+    # Always ignore '.venv' plus any additional directories specified
+    ignore_dirs = set(args.ignore) | {'.venv'}
+
+    # Path to the output file
+    output_file = os.path.join(search_dir, "FileName_Contents.txt")
+
+    # Clear the output file if it exists
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            pass  # This will clear the file
+    except Exception as e:
+        print(f"Error initializing the output file: {e}")
+        return
+
+    # Walk through the directory
+    for root, dirs, files in os.walk(search_dir, topdown=True):
+        # Modify dirs in-place to skip ignored directories
+        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+
+        for file in files:
+            if any(file.endswith(ext) for ext in file_formats):
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                except Exception as e:
+                    print(f"Error reading {file_path}: {e}")
+                    continue
+
+                # Write the file name and its contents to the output file
+                try:
+                    with open(output_file, 'a', encoding='utf-8') as out_f:
+                        out_f.write(f'"{file}"\n\n```\n{content}\n```\n\n')
+                except Exception as e:
+                    print(f"Error writing to {output_file}: {e}")
+                    return
+
+    print(f"Contents have been successfully written to {output_file}")
+
+if __name__ == "__main__":
+    main()
+
+```
+
+"config.py"
+
+```
+# config.py
+
+import os
+
+# Define the base data directory
+BASE_DATA_DIR = 'data_storage'
+
+# Define subdirectories
+PROCESSED_DATA_DIR = os.path.join(BASE_DATA_DIR, 'processed_data')
+REPORTS_DIR = os.path.join(BASE_DATA_DIR, 'reports')
+MAPPINGS_DIR = os.path.join(BASE_DATA_DIR, 'mappings')
+PLOTS_DIR = os.path.join(BASE_DATA_DIR, 'plots')
+LOGS_DIR = os.path.join(BASE_DATA_DIR, 'logs')
+
+```
+
+"data_binner.py"
+
+```
+# data_binner.py
+
+import pandas as pd
+from typing import Tuple, Dict, List
+
+class DataBinner:
+    """
+    A class to bin specified columns in a Pandas DataFrame based on provided bin counts and binning methods.
+    """
+    
+    def __init__(self, Data: pd.DataFrame, method: str = 'equal width'):
+        """
+        Initializes the DataBinner with the original DataFrame and binning method.
+        """
+        self.original_df = Data.copy()
+        self.binned_df = pd.DataFrame()
+        self.binned_columns = {
+            'datetime': [],
+            'integer': [],
+            'float': [],
+            'unsupported': []
+        }
+        self.method = method.lower()
+        self._validate_method()
+    
+    def _validate_method(self):
+        """
+        Validates the binning method. Raises a ValueError if the method is unsupported.
+        """
+        supported_methods = ['equal width', 'quantile']
+        if self.method not in supported_methods:
+            raise ValueError(f"Unsupported binning method '{self.method}'. Supported methods are: {supported_methods}")
+    
+    def bin_columns(
+        self,
+        bin_dict: Dict[str, int]
+    ) -> Tuple[pd.DataFrame, Dict[str, List[str]]]:
+        """
+        Bins specified columns in the DataFrame based on the provided bin counts and binning method.
+        """
+        # Initialize dictionary to categorize binned columns
+        self.binned_columns = {
+            'datetime': [],
+            'integer': [],
+            'float': [],
+            'unsupported': []
+        }
+
+        # Create a copy of the DataFrame to avoid modifying the original data
+        Bin_Data = self.original_df.copy()
+
+        for col, bins in bin_dict.items():
+            if col not in Bin_Data.columns:
+                print(f"⚠️ Column '{col}' does not exist in the DataFrame. Skipping.")
+                continue
+
+            try:
+                if pd.api.types.is_datetime64_any_dtype(Bin_Data[col]):
+                    # Binning datetime columns using pd.cut or pd.qcut based on method
+                    Bin_Data[col] = self._bin_column(Bin_Data[col], bins, self.method)
+                    self.binned_columns['datetime'].append(col)
+
+                elif pd.api.types.is_integer_dtype(Bin_Data[col]):
+                    Bin_Data[col] = self._bin_column(Bin_Data[col], bins, self.method)
+                    self.binned_columns['integer'].append(col)
+
+                elif pd.api.types.is_float_dtype(Bin_Data[col]):
+                    Bin_Data[col] = self._bin_column(Bin_Data[col], bins, self.method)
+                    self.binned_columns['float'].append(col)
+
+                else:
+                    print(f"Column '{col}' has unsupported dtype '{Bin_Data[col].dtype}'. Skipping.")
+                    self.binned_columns['unsupported'].append(col)
+
+            except Exception as e:
+                # Detailed error messages based on column type
+                if pd.api.types.is_datetime64_any_dtype(Bin_Data[col]):
+                    print(f"Failed to bin datetime column '{col}': {e}")
+                elif pd.api.types.is_integer_dtype(Bin_Data[col]):
+                    print(f"Failed to bin integer column '{col}': {e}")
+                elif pd.api.types.is_float_dtype(Bin_Data[col]):
+                    print(f"Failed to bin float column '{col}': {e}")
+                else:
+                    print(f"Failed to bin column '{col}': {e}")
+                self.binned_columns['unsupported'].append(col)
+
+        # Retain only the successfully binned columns
+        successfully_binned = (
+            self.binned_columns['datetime'] +
+            self.binned_columns['integer'] +
+            self.binned_columns['float']
+        )
+        self.binned_df = Bin_Data[successfully_binned]
+
+        return self.binned_df, self.binned_columns
+
+    def _bin_column(self, series: pd.Series, bins: int, method: str) -> pd.Series:
+        """
+        Bins a single column using the specified method and returns integer labels as categorical.
+
+        Parameters:
+            series (pd.Series): The column to bin.
+            bins (int): The number of bins.
+            method (str): The binning method ('equal width' or 'quantile').
+
+        Returns:
+            pd.Series: The binned column as categorical integers starting at 1.
+        """
+        if method == 'equal width':
+            binned = pd.cut(
+                series,
+                bins=bins,
+                labels=False,
+                duplicates='drop'
+            )
+        elif method == 'quantile':
+            binned = pd.qcut(
+                series,
+                q=bins,
+                labels=False,
+                duplicates='drop'
+            )
+        else:
+            # This should not happen due to validation in __init__
+            raise ValueError(f"Unsupported binning method '{method}'.")
+
+        # If labels=False, bins start at 0. To start at 1, add 1 and convert to categorical
+        return (binned + 1).astype('category')
+
+    def get_binned_data(self) -> pd.DataFrame:
+        """
+        Retrieves the binned DataFrame.
+        """
+        return self.binned_df.copy()
+
+    def get_binned_columns(self) -> Dict[str, List[str]]:
+        """
+        Retrieves the categorization of binned columns by data type.
+        """
+        return self.binned_columns.copy()
+
+```
+
+"data_integrity_assessor.py"
+
+```
+# data_integrity_assessor.py
+
+import pandas as pd
+import numpy as np
+from scipy.stats import entropy
+import matplotlib.pyplot as plt
+import os
+
+class DataIntegrityAssessor:
+    def __init__(self, original_df: pd.DataFrame, binned_df: pd.DataFrame):
+        self.original_df = original_df.copy()
+        self.binned_df = binned_df.copy()
+        self.integrity_report = None
+        self.overall_loss = None
+
+        self._validate_dataframes()
+
+    def _validate_dataframes(self):
+        if not self.original_df.columns.equals(self.binned_df.columns):
+            raise ValueError("Both DataFrames must have the same columns.")
+
+        for col in self.original_df.columns:
+            if not pd.api.types.is_object_dtype(self.original_df[col]) and not pd.api.types.is_categorical_dtype(self.original_df[col]):
+                raise TypeError(f"Column '{col}' is not categorical in the original DataFrame.")
+            if not pd.api.types.is_object_dtype(self.binned_df[col]) and not pd.api.types.is_categorical_dtype(self.binned_df[col]):
+                raise TypeError(f"Column '{col}' is not categorical in the binned DataFrame.")
+
+    @staticmethod
+    def calculate_entropy(series: pd.Series) -> float:
+        counts = series.value_counts(normalize=True)
+        return entropy(counts, base=2)
+
+    def assess_integrity_loss(self):
+        integrity_data = {
+            'Variable': [],
+            'Original Entropy (bits)': [],
+            'Binned Entropy (bits)': [],
+            'Entropy Loss (bits)': [],
+            'Percentage Loss (%)': []
+        }
+
+        for col in self.original_df.columns:
+            original_entropy = self.calculate_entropy(self.original_df[col])
+            binned_entropy = self.calculate_entropy(self.binned_df[col])
+            entropy_loss = original_entropy - binned_entropy
+            percentage_loss = (entropy_loss / original_entropy) * 100 if original_entropy != 0 else 0
+
+            integrity_data['Variable'].append(col)
+            integrity_data['Original Entropy (bits)'].append(round(original_entropy, 6))
+            integrity_data['Binned Entropy (bits)'].append(round(binned_entropy, 6))
+            integrity_data['Entropy Loss (bits)'].append(round(entropy_loss, 6))
+            integrity_data['Percentage Loss (%)'].append(round(percentage_loss, 2))
+
+        self.integrity_report = pd.DataFrame(integrity_data)
+        self.overall_loss = round(self.integrity_report['Percentage Loss (%)'].mean(), 2)
+
+    def generate_report(self) -> pd.DataFrame:
+        if self.integrity_report is None:
+            self.assess_integrity_loss()
+        return self.integrity_report.copy()
+
+    def save_report(self, filepath: str):
+        if self.integrity_report is None:
+            self.assess_integrity_loss()
+        self.integrity_report.to_csv(filepath, index=False)
+        print(f"Integrity report saved to {os.path.abspath(filepath)}")
+
+    def plot_entropy(self, save_path: str = None, figsize: tuple = (10, 6)):
+        if self.integrity_report is None:
+            self.assess_integrity_loss()
+
+        variables = self.integrity_report['Variable']
+        original_entropy = self.integrity_report['Original Entropy (bits)']
+        binned_entropy = self.integrity_report['Binned Entropy (bits)']
+
+        x = np.arange(len(variables))  # the label locations
+        width = 0.35  # the width of the bars
+
+        fig, ax = plt.subplots(figsize=figsize)
+        rects1 = ax.bar(x - width/2, original_entropy, width, label='Original Entropy')
+        rects2 = ax.bar(x + width/2, binned_entropy, width, label='Binned Entropy')
+
+        # Add some text for labels, title and custom x-axis tick labels, etc.
+        ax.set_ylabel('Entropy (bits)')
+        ax.set_title('Original vs Binned Entropy per Variable')
+        ax.set_xticks(x)
+        ax.set_xticklabels(variables, rotation=45, ha='right')
+        ax.legend()
+
+        # Attach a text label above each bar in rects, displaying its height.
+        def autolabel(rects):
+            for rect in rects:
+                height = rect.get_height()
+                ax.annotate(f'{height:.2f}',
+                            xy=(rect.get_x() + rect.get_width() / 2, height),
+                            xytext=(0, 3),  # 3 points vertical offset
+                            textcoords="offset points",
+                            ha='center', va='bottom')
+
+        autolabel(rects1)
+        autolabel(rects2)
+
+        fig.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+            print(f"Entropy plot saved to {os.path.abspath(save_path)}")
+        else:
+            plt.show()
+        
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+            print(f"Entropy plot saved to {os.path.abspath(save_path)}")
+        else:
+            plt.show()
+    
+        return fig  # Add this line to return the Figure object
+
+    def get_overall_loss(self) -> float:
+        if self.overall_loss is None:
+            self.assess_integrity_loss()
+        return self.overall_loss
+
+```
+
+"density_plotter.py"
+
+```
+# density_plotter.py
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import List, Optional, Tuple
+import math
+import os
+
+class DensityPlotter:
+    def __init__(
+        self,
+        dataframe: pd.DataFrame,
+        category_columns: List[str],
+        figsize: Tuple[int, int] = (20, 20),
+        save_path: Optional[str] = None,
+        plot_style: str = 'whitegrid'
+    ):
+        self.dataframe = dataframe.copy()
+        self.category_columns = category_columns
+        self.figsize = figsize
+        self.save_path = save_path
+        self.plot_style = plot_style
+
+        sns.set_style(self.plot_style)
+
+        self._valicategory_columns()
+
+    def _valicategory_columns(self):
+        for col in self.category_columns:
+            if col not in self.dataframe.columns:
+                raise ValueError(f"Date column '{col}' does not exist in the DataFrame.")
+            if not pd.api.types.is_categorical_dtype(self.dataframe[col]):
+                raise TypeError(f"Date column '{col}' is not of categorical dtype.")
+
+    def plot_grid(self):
+        total_plots = len(self.category_columns)
+        if total_plots == 0:
+            print("No columns to plot.")
+            return
+
+        cols = math.ceil(math.sqrt(total_plots))
+        rows = math.ceil(total_plots / cols)
+
+        fig, axes = plt.subplots(rows, cols, figsize=self.figsize)
+        axes = axes.flatten()
+
+        plot_idx = 0
+
+        for col in self.category_columns:
+            ax = axes[plot_idx]
+            try:
+                counts = self.dataframe[col].value_counts().sort_index()
+                sns.kdeplot(data=counts.values, ax=ax, fill=True, color='orange')
+                ax.set_title(col)
+                ax.set_ylabel('Density')
+                ax.set_xlabel('')
+                ax.set_xticks([])
+            except Exception as e:
+                print(f"Failed to plot date column '{col}': {e}")
+            plot_idx += 1
+
+        for idx in range(plot_idx, len(axes)):
+            fig.delaxes(axes[idx])
+
+        plt.tight_layout()
+
+        if self.save_path:
+            save_dir = os.path.dirname(self.save_path)
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+            try:
+                plt.savefig(self.save_path, dpi=300)
+                print(f"Density plots saved to {self.save_path}")
+            except Exception as e:
+                print(f"Failed to save plot to '{self.save_path}': {e}")
+        else:
+            plt.show()
+        
+        if self.save_path:
+            plt.savefig(self.save_path, dpi=300)
+            print(f"Density plots saved to {self.save_path}")
+        else:
+            plt.show()
+        
+        return fig  # Add this line to return the Figure object
+
+```
+
+"Detect_Dtypes.py"
+
+```
+# Detect_Dtypes.py
+
+import pandas as pd
+import numpy as np
+import logging
+from typing import Dict, Tuple, Optional
+import sys
+import concurrent.futures
+import re
+
+
+class DtypeDetector:
+    def __init__(
+        self,
+        date_threshold: float = 0.5,
+        numeric_threshold: float = 0.9,
+        factor_threshold_ratio: float = 0.5,
+        factor_threshold_unique: int = 50,
+        dayfirst: bool = False,
+        log_level: str = 'INFO',
+        log_file: Optional[str] = None,
+        convert_factors_to_int: bool = True,
+        date_format: Optional[str] = None  # **New Parameter**
+    ):
+        """
+        Initialize the DtypeDetector with configurable thresholds and logging.
+
+        Parameters:
+            date_threshold (float): Threshold for date detection.
+            numeric_threshold (float): Threshold for numeric detection.
+            factor_threshold_ratio (float): Threshold ratio for factor detection.
+            factor_threshold_unique (int): Threshold for unique values in factor detection.
+            dayfirst (bool): Whether to interpret the first value in dates as the day.
+            log_level (str): Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+            log_file (Optional[str]): Path to save the log file. If None, logs are printed to stdout.
+            convert_factors_to_int (bool): Whether to convert factors to integer codes. 
+                If False, factors remain as categorical types with original string labels.
+            date_format (Optional[str]): Desired date format (e.g., '%d-%m-%Y'). 
+                If specified, date columns will be formatted as strings in this format.
+        """
+        self.convert_factors_to_int = convert_factors_to_int
+        self.date_format = date_format  # **Store the New Parameter**
+        self.thresholds = {
+            'date_threshold': date_threshold,
+            'numeric_threshold': numeric_threshold,
+            'factor_threshold_ratio': factor_threshold_ratio,
+            'factor_threshold_unique': factor_threshold_unique
+        }
+        self.dayfirst = dayfirst
+        self.data_types: Dict[str, str] = {}
+        self.series_mapping: Dict[str, Dict[int, str]] = {}
+
+        # Configure logging
+        log_handlers = [logging.StreamHandler(sys.stdout)]
+        if log_file:
+            log_handlers.append(logging.FileHandler(log_file))
+        
+        logging.basicConfig(
+            level=getattr(logging, log_level.upper(), logging.INFO),
+            format='%(asctime)s [%(levelname)s] %(message)s',
+            handlers=log_handlers
+        )
+        self.logger = logging.getLogger(__name__)
+    
+    def clean_column_names(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Clean column names by removing any '/' or '\' characters.
+
+        Parameters:
+            data (pd.DataFrame): The DataFrame with original column names.
+
+        Returns:
+            pd.DataFrame: The DataFrame with cleaned column names.
+        """
+        original_columns = data.columns.tolist()
+        cleaned_columns = []
+        for col in original_columns:
+            # Remove '/' and '\' from column names
+            cleaned_col = re.sub(r'[\\/]', '', col)
+            cleaned_columns.append(cleaned_col)
+            if cleaned_col != col:
+                self.logger.debug(f"Renamed column '{col}' to '{cleaned_col}'")
+        data.columns = cleaned_columns
+        return data
+
+    def determine_column_type(
+        self,
+        series: pd.Series
+    ) -> str:
+        """
+        Determine the type of a pandas Series.
+        Returns 'int', 'float', 'date', 'factor', 'bool', or 'string'.
+        """
+        total = len(series)
+        if total == 0:
+            self.logger.debug(f"Column '{series.name}' is empty. Defaulting to 'string'.")
+            return 'string'  # Default to string for empty columns
+
+        num_unique = series.nunique(dropna=True)
+        self.logger.debug(f"Column '{series.name}': Total={total}, Unique={num_unique}")
+
+        # Attempt to convert to numeric first
+        try:
+            s_numeric = pd.to_numeric(series, errors='coerce')
+            num_not_missing_numeric = s_numeric.notnull().sum()
+            percent_numeric = num_not_missing_numeric / total
+            self.logger.debug(f"Column '{series.name}': Numeric parse success rate: {percent_numeric:.2f}")
+            if percent_numeric > self.thresholds['numeric_threshold']:
+                # Check if all non-NaN values are integers within a tolerance
+                if np.allclose(s_numeric.dropna(), s_numeric.dropna().astype(int), atol=1e-8):
+                    return 'int'
+                else:
+                    return 'float'
+        except Exception as e:
+            self.logger.debug(f"Column '{series.name}': Numeric parsing failed: {e}")
+
+        # Attempt to parse dates
+        try:
+            # Include time in date parsing by specifying formats that include time
+            # Example formats: '%d/%m/%Y %H:%M', '%Y-%m-%d %H:%M', etc.
+            # You can expand this list based on your data
+            date_formats = [
+                '%d/%m/%Y %H:%M',
+                '%d/%m/%Y',
+                '%Y-%m-%d %H:%M',
+                '%Y-%m-%d',
+                '%m/%d/%Y %H:%M',
+                '%m/%d/%Y',
+                '%d-%m-%Y %H:%M',
+                '%d-%m-%Y',
+                '%Y/%m/%d %H:%M',
+                '%Y/%m/%d',
+                '%Y-%m-%d %H:%M:%S%z',
+                '%a %b %d %H:%M:%S %z %Y',
+                '%a %b %d %H:%M:%S +0000 %Y'
+            ]
+            for fmt in date_formats:
+                s_date = pd.to_datetime(series, errors='coerce', format=fmt, dayfirst=self.dayfirst)
+                num_not_missing_date = s_date.notnull().sum()
+                percent_date = num_not_missing_date / total
+                self.logger.debug(f"Column '{series.name}': Date parse success rate with format '{fmt}': {percent_date:.2f}")
+                if percent_date > self.thresholds['date_threshold']:
+                    return 'date'
+        except Exception as e:
+            self.logger.debug(f"Column '{series.name}': Date parsing failed: {e}")
+
+        # Check for boolean
+        unique_values = set(series.dropna().unique())
+        if unique_values <= {0, 1, '0', '1', 'True', 'False', 'true', 'false'}:
+            return 'bool'
+
+        # Check for categorical (factor) with AND condition
+        try:
+            if (num_unique / total) < self.thresholds['factor_threshold_ratio'] and num_unique < self.thresholds['factor_threshold_unique']:
+                return 'factor'
+        except Exception as e:
+            self.logger.debug(f"Column '{series.name}': Factor determination failed: {e}")
+
+        return 'string'
+
+    def convert_series(self, series: pd.Series, dtype: str) -> pd.Series:
+        """
+        Convert a pandas Series to the specified dtype.
+        """
+        if dtype == 'date':
+            dt_series = pd.to_datetime(series, errors='coerce', dayfirst=self.dayfirst)
+            if self.date_format:
+                # Format datetime as string in the specified format
+                formatted_series = dt_series.dt.strftime(self.date_format)
+                return formatted_series
+            else:
+                return dt_series
+        elif dtype == 'factor':
+            category = series.astype('category')
+            # Store the mapping of codes to categories
+            self.series_mapping[series.name] = dict(enumerate(category.cat.categories))
+            if self.convert_factors_to_int:
+                return category.cat.codes  # **Convert to integer codes**
+            else:
+                return category  # **Retain as categorical with string labels**
+        elif dtype == 'int':
+            return pd.to_numeric(series, errors='coerce').astype('Int64')
+        elif dtype == 'float':
+            return pd.to_numeric(series, errors='coerce')
+        elif dtype == 'bool':
+            # Map various representations of booleans to actual booleans
+            return series.map({
+                'True': True, 'False': False, 'true': True, 'false': False,
+                1: True, 0: False
+            }).astype('bool')
+        else:
+            return series.astype(str)
+
+    def process_column(self, col: str, data: pd.DataFrame) -> Tuple[str, str, pd.Series]:
+        """
+        Process a single column: determine its type and convert it.
+        Returns the column name, detected type, and converted series.
+        """
+        try:
+            dtype = self.determine_column_type(data[col])
+            converted_series = self.convert_series(data[col], dtype)
+            self.logger.info(f"Column: {col}, Type Assessed: {dtype}, New Type: {converted_series.dtype}")
+            return (col, dtype, converted_series)
+        except Exception as e:
+            self.logger.warning(f"Failed to process column '{col}': {e}")
+            # Default to string if conversion fails
+            converted_series = data[col].astype(str)
+            self.logger.info(f"      New Type: {converted_series.dtype} (defaulted to string)")
+            return (col, 'string', converted_series)
+
+    def process_dataframe(
+        self,
+        filepath: str,
+        use_parallel: bool = True,
+        report_path: str = 'Type_Conversion_Report.csv'
+    ) -> pd.DataFrame:
+        """
+        Read a CSV file, determine column types, convert columns accordingly, and generate a report.
+
+        Parameters:
+            filepath (str): Path to the input CSV file.
+            use_parallel (bool): Whether to use parallel processing for columns.
+            report_path (str): Path to save the type conversion report.
+
+        Returns:
+            pd.DataFrame: The processed DataFrame.
+        """
+        try:
+            data = pd.read_csv(filepath, sep=',')  # Assuming comma deliminated values
+            data = self.clean_column_names(data)
+            self.logger.info(f"Successfully read file: {filepath}")
+        except FileNotFoundError:
+            self.logger.error(f"File not found: {filepath}")
+            raise
+        except pd.errors.EmptyDataError:
+            self.logger.error("No data: The file is empty.")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error reading the file: {e}")
+            raise
+
+        data_types: Dict[str, str] = {}
+
+        if use_parallel:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = {executor.submit(self.process_column, col, data): col for col in data.columns}
+                for future in concurrent.futures.as_completed(futures):
+                    col, dtype, converted_series = future.result()
+                    data_types[col] = dtype
+                    data[col] = converted_series
+        else:
+            for col in data.columns:
+                col_name, dtype, converted_series = self.process_column(col, data)
+                data_types[col_name] = dtype
+                data[col_name] = converted_series
+
+        # Generate type conversion report
+        report = pd.DataFrame(list(data_types.items()), columns=['Column', 'Type'])
+        report.to_csv(report_path, index=False)
+        self.logger.info(f"Type conversion report saved to {report_path}")
+
+        return data
+
+    def get_category_mapping(self) -> Dict[str, Dict[int, str]]:
+        """
+        Get the mapping of categorical codes to original categories.
+
+        Returns:
+            Dict[str, Dict[int, str]]: Mapping for each categorical column.
+        """
+        return self.series_mapping
+
+```
+
+"Process_Data.py"
+
+```
+# Process_Data.py
+
+import pandas as pd
+import os
+from Binning_Tab.Detect_Dtypes import DtypeDetector  # Ensure dtype_detector.py is in the same directory or PYTHONPATH
+import logging
+from typing import Optional, Dict, Any, Tuple
+
+class DataProcessor:
+    def __init__(
+        self,
+        input_filepath: str = 'Data.csv',
+        output_filepath: str = 'Processed_Data.csv',
+        report_path: str = 'Type_Conversion_Report.csv',
+        return_category_mappings: bool = True,
+        mapping_directory: str = 'Category_Mappings',
+        parallel_processing: bool = False,
+        date_threshold: float = 0.6,
+        numeric_threshold: float = 0.9,
+        factor_threshold_ratio: float = 0.2,
+        factor_threshold_unique: int = 500,
+        dayfirst: bool = True,
+        log_level: str = 'INFO',
+        log_file: Optional[str] = None,
+        convert_factors_to_int: bool = True,
+        date_format: Optional[str] = '%d-%m-%Y',  # **New Parameter**
+        save_type: str = 'csv' # **New Parameter**
+    ):
+        """
+        Initialize the DataProcessor with file paths and configuration parameters.
+
+        Parameters:
+            ... [Existing Parameters] ...
+            date_format (Optional[str]): Desired date format for output (e.g., '%d-%m-%Y'). 
+                If specified, date columns will be formatted as strings in this format.
+        """
+        # Assigning file paths and configurations
+        self.input_filepath = input_filepath
+        self.output_filepath = output_filepath
+        self.report_path = report_path
+        self.return_category_mappings = return_category_mappings
+        self.mapping_directory = mapping_directory
+        self.parallel_processing = parallel_processing
+        self.save_type = save_type
+
+        # Initialize the DtypeDetector with provided thresholds and configurations
+        self.detector = DtypeDetector(
+            date_threshold=date_threshold,
+            numeric_threshold=numeric_threshold,
+            factor_threshold_ratio=factor_threshold_ratio,
+            factor_threshold_unique=factor_threshold_unique,
+            dayfirst=dayfirst,
+            log_level=log_level,
+            log_file=log_file,
+            convert_factors_to_int=convert_factors_to_int,
+            date_format=date_format  # **Pass the New Parameter**
+        )
+
+    def process(self):
+        """
+        Execute the data processing workflow:
+            1. Read and clean the input CSV file.
+            2. Determine and convert column data types.
+            3. Generate and save a type conversion report.
+            4. Save the processed data to the output CSV file.
+            5. Optionally, save category mappings for 'factor' columns.
+        """
+        try:
+            # Attempt to process the dataframe with the specified parallel processing option
+            processed_data = self.detector.process_dataframe(
+                filepath=self.input_filepath,
+                use_parallel=self.parallel_processing,
+                report_path=self.report_path
+            )
+            print(processed_data.dtypes)
+        except Exception as e:
+            # If parallel processing fails, attempt sequential processing
+            print("Unable to use parallel processing, trying without parallel processing.")
+            self.detector.logger.warning(f"Parallel processing failed: {e}")
+            try:
+                processed_data = self.detector.process_dataframe(
+                    filepath=self.input_filepath,
+                    use_parallel=False,
+                    report_path=self.report_path
+                )
+            except Exception as e:
+                # If sequential processing also fails, log the error and exit
+                print(f"Error processing data: {e}")
+                self.detector.logger.error(f"Error processing data: {e}")
+                return
+
+
+        if self.save_type == 'csv':
+            #---------------------------------------------------------------------------
+            # Save the processed data to the specified output CSV file
+            try:
+                processed_data.to_csv(self.output_filepath, index=False)
+                self.detector.logger.info(f"Processed data saved to {self.output_filepath}")
+            except Exception as e:
+                self.detector.logger.error(f"Failed to save processed data: {e}")
+                print(f"Failed to save processed data: {e}")
+            #---------------------------------------------------------------------------
+
+        elif self.save_type == 'pickle':
+            #---------------------------------------------------------------------------
+            # Save the processed data to the specified output Pickle file
+            try:
+                processed_data.to_pickle(self.output_filepath)
+                self.detector.logger.info(f"Processed data saved to {self.output_filepath}")
+            except Exception as e:
+                self.detector.logger.error(f"Failed to save processed data: {e}")
+                print(f"Failed to save processed data: {e}")
+            #---------------------------------------------------------------------------
+
+        elif self.save_type == 'parquet':
+            #---------------------------------------------------------------------------
+            # Save the processed data to the specified output Pickle file
+            try:
+                processed_data.to_parquet(self.output_filepath, index=False)
+                self.detector.logger.info(f"Processed data saved to {self.output_filepath}")
+            except Exception as e:
+                self.detector.logger.error(f"Failed to save processed data: {e}")
+                print(f"Failed to save processed data: {e}")
+            #---------------------------------------------------------------------------
+
+        # If configured to return category mappings, save them
+        if self.return_category_mappings:
+            self.save_category_mappings()
+        
+
+    def save_category_mappings(self):
+        """
+        Save category mappings for 'factor' columns to the specified directory.
+        Each mapping is saved as a separate CSV file named '<Column_Name>_mapping.csv'.
+        """
+        try:
+            # Create the mapping directory if it doesn't exist
+            os.makedirs(self.mapping_directory, exist_ok=True)
+            self.detector.logger.debug(f"Mapping directory '{self.mapping_directory}' is ready.")
+        except Exception as e:
+            self.detector.logger.error(f"Failed to create mapping directory '{self.mapping_directory}': {e}")
+            print(f"Failed to create mapping directory '{self.mapping_directory}': {e}")
+            return
+
+        # Remove existing mapping files to avoid duplication or outdated mappings
+        try:
+            for file in os.listdir(self.mapping_directory):
+                file_path = os.path.join(self.mapping_directory, file)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    self.detector.logger.debug(f"Removed existing mapping file '{file_path}'.")
+        except Exception as e:
+            self.detector.logger.error(f"Failed to clean mapping directory '{self.mapping_directory}': {e}")
+            print(f"Failed to clean mapping directory '{self.mapping_directory}': {e}")
+            return
+
+        # Retrieve category mappings from the DtypeDetector
+        category_mappings = self.detector.get_category_mapping()
+
+        # Save each category mapping to a separate CSV file
+        if category_mappings:
+            for col, mapping in category_mappings.items():
+                try:
+                    # Convert the mapping dictionary to a DataFrame for easier CSV export
+                    mapping_df = pd.DataFrame(list(mapping.items()), columns=['Code', 'Category'])
+                    # Define the mapping file path
+                    mapping_filepath = os.path.join(self.mapping_directory, f"{col}_mapping.csv")
+
+                    # Save the mapping DataFrame to CSV
+                    mapping_df.to_csv(mapping_filepath, index=False)
+                    self.detector.logger.info(f"Category mapping for '{col}' saved to '{mapping_filepath}'")
+                except Exception as e:
+                    self.detector.logger.error(f"Failed to save category mapping for '{col}': {e}")
+                    print(f"Failed to save category mapping for '{col}': {e}")
+        else:
+            self.detector.logger.info("No category mappings to save.")
+
+```
+
+"unique_bin_identifier.py"
+
+```
+# unique_bin_identifier.py
+
+import pandas as pd
+from itertools import combinations
+from typing import Tuple, List, Dict, Optional
+import warnings
+
+class UniqueBinIdentifier:
+    """
+    A class to identify unique observations in the original DataFrame based on combinations
+    of bin columns from the binned DataFrame.
+
+    Attributes:
+        original_df (pd.DataFrame): The original DataFrame with full data.
+        binned_df (pd.DataFrame): The binned DataFrame with reduced bin counts.
+        results (pd.DataFrame): DataFrame containing combinations and unique identification counts.
+    """
+
+    def __init__(self, original_df: pd.DataFrame, binned_df: pd.DataFrame):
+        """
+        Initializes the UniqueBinIdentifier with original and binned DataFrames.
+
+        Parameters:
+            original_df (pd.DataFrame): The original DataFrame with full data.
+            binned_df (pd.DataFrame): The binned DataFrame with reduced bin counts.
+        """
+        self.original_df = original_df.reset_index(drop=True)
+        self.binned_df = binned_df.reset_index(drop=True)
+        self.results = pd.DataFrame()
+
+        self._validate_dataframes()
+
+    def _validate_dataframes(self):
+        """
+        Validates that the original and binned DataFrames have the same number of rows.
+        """
+        if len(self.original_df) != len(self.binned_df):
+            raise ValueError("Original and binned DataFrames must have the same number of rows.")
+
+    def find_unique_identifications(
+        self,
+        min_comb_size: int = 1,
+        max_comb_size: Optional[int] = None,
+        columns: Optional[List[str]] = None
+    ) -> pd.DataFrame:
+        """
+        Analyzes combinations of bin columns to identify how many unique observations
+        in the original DataFrame are uniquely identified by each combination.
+
+        Parameters:
+            min_comb_size (int, optional): Minimum size of column combinations to consider. Default is 1.
+            max_comb_size (int, optional): Maximum size of column combinations to consider. If None, uses all columns.
+            columns (List[str], optional): Specific columns to consider for combinations. If None, uses all binned columns.
+
+        Returns:
+            pd.DataFrame: DataFrame with columns 'Combination' and 'Unique_Identifications'.
+        """
+        if columns is None:
+            columns = list(self.binned_df.columns)
+        else:
+            # Validate that provided columns exist in the binned DataFrame
+            missing_cols = set(columns) - set(self.binned_df.columns)
+            if missing_cols:
+                raise ValueError(f"The following columns are not in the binned DataFrame: {missing_cols}")
+
+        if max_comb_size is None:
+            max_comb_size = len(columns)
+        else:
+            max_comb_size = min(max_comb_size, len(columns))
+
+        if min_comb_size < 1:
+            raise ValueError("min_comb_size must be at least 1.")
+
+        if max_comb_size < min_comb_size:
+            raise ValueError("max_comb_size must be greater than or equal to min_comb_size.")
+
+        results = []
+
+        total_combinations = sum(
+            [self._nCr(len(columns), r) for r in range(min_comb_size, max_comb_size + 1)]
+        )
+
+        print(f"Total combinations to analyze: {total_combinations}")
+
+        combination_counter = 0
+
+        for comb_size in range(min_comb_size, max_comb_size + 1):
+            for comb in combinations(columns, comb_size):
+                combination_counter += 1
+                if combination_counter % 1000 == 0:
+                    print(f"Analyzed {combination_counter} / {total_combinations} combinations...")
+
+                # Create a temporary DataFrame with the combination of bins
+                temp_df = self.binned_df[list(comb)]
+
+                # Group by the combination and count the number of occurrences
+                group_counts = temp_df.groupby(list(comb)).size()
+
+                # Number of unique identifications is the number of groups with size ==1
+                unique_identifications = (group_counts == 1).sum()
+
+                # Append the result
+                results.append({
+                    'Combination': comb,
+                    'Unique_Identifications': unique_identifications
+                })
+
+        # Create a DataFrame from the results
+        self.results = pd.DataFrame(results)
+
+        # Sort the results by 'Unique_Identifications' descending
+        self.results.sort_values(by='Unique_Identifications', ascending=False, inplace=True)
+        self.results.reset_index(drop=True, inplace=True)
+
+        print("Unique identification analysis complete.")
+
+        return self.results
+
+    @staticmethod
+    def _nCr(n: int, r: int) -> int:
+        """
+        Computes the number of combinations (n choose r).
+
+        Parameters:
+            n (int): Total number of items.
+            r (int): Number of items to choose.
+
+        Returns:
+            int: Number of combinations.
+        """
+        from math import comb
+        return comb(n, r)
+
+    def get_results(self) -> pd.DataFrame:
+        """
+        Retrieves the results of the unique identification analysis.
+
+        Returns:
+            pd.DataFrame: DataFrame with columns 'Combination' and 'Unique_Identifications'.
+        """
+        if self.results.empty:
+            raise ValueError("No results found. Please run 'find_unique_identifications' first.")
+        return self.results.copy()
+
+    def save_results(self, filepath: str):
+        """
+        Saves the unique identification results to a CSV file.
+
+        Parameters:
+            filepath (str): The path where the results will be saved.
+        """
+        if self.results.empty:
+            raise ValueError("No results to save. Please run 'find_unique_identifications' first.")
+        self.results.to_csv(filepath, index=False)
+        print(f"📄 Unique identification results saved to {filepath}")
+
+    def plot_results(self, top_n: int = 10, save_path: Optional[str] = None):
+        """
+        Plots the top N combinations with the highest number of unique identifications.
+
+        Parameters:
+            top_n (int, optional): Number of top combinations to plot. Default is 10.
+            save_path (str, optional): If provided, saves the plot to the specified path.
+        """
+        if self.results.empty:
+            raise ValueError("No results to plot. Please run 'find_unique_identifications' first.")
+
+        import matplotlib.pyplot as plt
+        import matplotlib.ticker as ticker
+
+        # Select top N combinations
+        plot_data = self.results.head(top_n)
+
+        # Prepare labels
+        labels = [' & '.join(comb) for comb in plot_data['Combination']]
+        counts = plot_data['Unique_Identifications']
+
+        # Create the bar plot
+        fig, ax = plt.subplots(figsize=(12, 8))
+        bars = ax.barh(labels, counts, color='skyblue')
+        ax.set_xlabel('Number of Unique Identifications')
+        ax.set_title(f'Top {top_n} Bin Combinations for Unique Identifications')
+        ax.invert_yaxis()  # Highest at the top
+
+        # Add counts to the bars
+        for bar in bars:
+            width = bar.get_width()
+            ax.annotate(f'{width}',
+                        xy=(width, bar.get_y() + bar.get_height() / 2),
+                        xytext=(5, 0),  # 5 points horizontal offset
+                        textcoords="offset points",
+                        ha='left', va='center')
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+            print(f"📈 Plot saved to {save_path}")
+        else:
+            plt.show()
+
+```
+
+"utils.py"
+
+```
+# utils.py
+
+import streamlit as st
+import pandas as pd
+import tempfile
+import os
+from Binning_Tab.Process_Data import DataProcessor
+
+# Define the root output directory
+OUTPUT_DIR = "outputs"
+
+# Define subdirectories
+PROCESSED_DATA_DIR = os.path.join(OUTPUT_DIR, "processed_data")
+REPORTS_DIR = os.path.join(OUTPUT_DIR, "reports")
+PLOTS_DIR = os.path.join(OUTPUT_DIR, "plots")
+UNIQUE_IDENTIFICATIONS_DIR = os.path.join(OUTPUT_DIR, "unique_identifications")
+
+def create_output_directories():
+    """
+    Creates the necessary output directories if they don't exist.
+    """
+    directories = [
+        PROCESSED_DATA_DIR,
+        REPORTS_DIR,
+        PLOTS_DIR,
+        UNIQUE_IDENTIFICATIONS_DIR
+    ]
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+
+def hide_streamlit_style():
+    """
+    Hides Streamlit's default menu and footer for a cleaner interface.
+    """
+    hide_style = """
+        <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        </style>
+        """
+    st.markdown(hide_style, unsafe_allow_html=True)
+
+def run_processing(save_type='csv', output_filename='Processed_Data.csv', file_path='Data.csv'):
+    """
+    Initializes and runs the data processor, saving outputs to the designated directories.
+    """
+    try:
+        # Ensure output directories exist
+        create_output_directories()
+        
+        # Define output file paths
+        output_filepath = os.path.join(PROCESSED_DATA_DIR, output_filename)
+        report_path = os.path.join(REPORTS_DIR, 'Type_Conversion_Report.csv')
+        
+        processor = DataProcessor(
+            input_filepath=file_path,
+            output_filepath=output_filepath,
+            report_path=report_path,
+            return_category_mappings=True,
+            mapping_directory='Category_Mappings',
+            parallel_processing=False,
+            date_threshold=0.6,
+            numeric_threshold=0.9,
+            factor_threshold_ratio=0.2,
+            factor_threshold_unique=500,
+            dayfirst=True,
+            log_level='INFO',
+            log_file=None,
+            convert_factors_to_int=True,
+            date_format=None,  # Keep as None to retain datetime dtype
+            save_type=save_type
+        )
+        processor.process()
+        return output_filepath
+    except Exception as e:
+        st.error(f"Error during data processing: {e}")
+        st.stop()
+
+def load_data(file_type, uploaded_file):
+    """
+    Loads the uploaded file into a Pandas DataFrame without any processing.
+
+    Parameters:
+        file_type (str): Type of the uploaded file ('csv' or 'pkl').
+        uploaded_file (UploadedFile): The uploaded file object.
+
+    Returns:
+        pd.DataFrame: The loaded DataFrame.
+        str: Error message if any, else None.
+    """
+    if uploaded_file is None:
+        return None, "No file uploaded!"
+
+    try:
+        # Determine the appropriate file extension
+        file_extension = {
+            "pkl": "pkl",
+            "csv": "csv"
+        }.get(file_type, "csv")  # Default to 'csv' if type is unrecognized
+
+        # Create a temporary file with the correct extension
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as tmp_file:
+            tmp_file.write(uploaded_file.getbuffer())
+            temp_file_path = tmp_file.name
+
+        # Read the data into a DataFrame
+        if file_type == "pkl":
+            Data = pd.read_pickle(temp_file_path)
+        elif file_type == "csv":
+            Data = pd.read_csv(temp_file_path)
+        else:
+            return None, "Unsupported file type!"
+
+        # Clean up temporary file
+        os.remove(temp_file_path)
+
+        return Data, None
+    except Exception as e:
+        return None, f"Error loading data: {e}"
+
+def align_dataframes(original_df, binned_df):
+    """
+    Ensures both DataFrames have the same columns.
+    """
+    try:
+        # Identify columns that exist in the original DataFrame but not in the binned DataFrame
+        missing_in_binned = original_df.columns.difference(binned_df.columns)
+        
+        # Retain all original columns that were not binned in the binned DataFrame
+        for column in missing_in_binned:
+            binned_df[column] = original_df[column]
+        
+        # Ensure columns are ordered the same way
+        binned_df = binned_df[original_df.columns]
+        
+        return original_df, binned_df
+    except Exception as e:
+        st.error(f"Error aligning dataframes: {e}")
+        st.stop()
+
+def save_dataframe(df, file_type, filename, subdirectory):
+    """
+    Saves the DataFrame to the specified file type within a subdirectory.
+    """
+    try:
+        # Ensure output directories exist
+        create_output_directories()
+        
+        # Determine the full path
+        if subdirectory == "processed_data":
+            dir_path = PROCESSED_DATA_DIR
+        elif subdirectory == "reports":
+            dir_path = REPORTS_DIR
+        elif subdirectory == "unique_identifications":
+            dir_path = UNIQUE_IDENTIFICATIONS_DIR
+        elif subdirectory == "plots":
+            dir_path = PLOTS_DIR
+        else:
+            raise ValueError("Unsupported subdirectory for saving DataFrame.")
+
+        file_path = os.path.join(dir_path, filename)
+
+        if file_type == 'csv':
+            df.to_csv(file_path, index=False)
+        elif file_type == 'pkl':
+            df.to_pickle(file_path)
+        else:
+            raise ValueError("Unsupported file type for saving.")
+        
+        return file_path  # Return the path for further use if needed
+    except Exception as e:
+        st.error(f"Error saving DataFrame: {e}")
+        st.stop()
+
+def load_dataframe(file_path, file_type):
+    """
+    Loads a DataFrame from the specified file path and type.
+    """
+    try:
+        if file_type == 'csv':
+            return pd.read_csv(file_path)
+        elif file_type == 'pkl':
+            return pd.read_pickle(file_path)
+        else:
+            raise ValueError("Unsupported file type for loading.")
+    except Exception as e:
+        st.error(f"Error loading DataFrame: {e}")
+        st.stop()
+
+def get_binning_configuration(Data, selected_columns):
+    """
+    Generates binning configuration sliders for selected columns.
+
+    Args:
+        Data (pd.DataFrame): The DataFrame containing the data.
+        selected_columns (list): List of columns selected for binning.
+
+    Returns:
+        dict: A dictionary with column names as keys and number of bins as values.
+    """
+    bins = {}
+    st.markdown("### 📏 Binning Configuration")
+
+    # Define layout parameters
+    cols_per_row = 2  # Number of sliders per row
+    num_cols = len(selected_columns)
+    rows = num_cols // cols_per_row + (num_cols % cols_per_row > 0)
+
+    current_col = 0
+
+    for row in range(rows):
+        # Create a new row of columns
+        cols = st.columns(cols_per_row)
+        
+        for col_idx in range(cols_per_row):
+            if current_col < num_cols:
+                column = selected_columns[current_col]
+                max_bins = Data[column].nunique()
+                min_bins = 2 if max_bins >= 2 else 1  # At least 2 bins if possible
+                default_bins = min(10, max_bins) if max_bins >= 2 else 1  # Default to 10 or max_unique if lower
+
+                with cols[col_idx]:
+                    if pd.api.types.is_datetime64_any_dtype(Data[column]):
+                        default_bins = min(6, max_bins) if max_bins >= 2 else 1
+                        bins[column] = st.slider(
+                            f'📏 {column} (Datetime)', 
+                            min_value=1, 
+                            max_value=max_bins,
+                            value=default_bins,
+                            key=column
+                        )
+                    elif pd.api.types.is_integer_dtype(Data[column]):
+                        if max_bins > 2:
+                            bins[column] = st.slider(
+                                f'📏 {column} (Integer)', 
+                                min_value=2, 
+                                max_value=max_bins, 
+                                value=default_bins,
+                                key=column
+                            )
+                        elif max_bins == 2:
+                            st.write(f'📏 **{column} (Integer):** 2 (Fixed)')
+                            bins[column] = 2
+                        else:
+                            st.write(f'📏 **{column} (Integer):** {max_bins} (Fixed)')
+                            bins[column] = max_bins
+                    elif pd.api.types.is_float_dtype(Data[column]):
+                        if max_bins > 2:
+                            bins[column] = st.slider(
+                                f'📏 {column} (Float)', 
+                                min_value=2, 
+                                max_value=max_bins, 
+                                value=default_bins,
+                                key=column
+                            )
+                        elif max_bins == 2:
+                            st.write(f'📏 **{column} (Float):** 2 (Fixed)')
+                            bins[column] = 2
+                        else:
+                            st.write(f'📏 **{column} (Float):** {max_bins} (Fixed)')
+                            bins[column] = max_bins
+                    else:
+                        if max_bins > 1:
+                            bins[column] = st.slider(
+                                f'📏 {column}', 
+                                min_value=1, 
+                                max_value=max_bins, 
+                                value=default_bins,
+                                key=column
+                            )
+                        elif max_bins == 1:
+                            st.write(f'📏 **{column}:** 1 (Fixed)')
+                            bins[column] = 1
+                        else:
+                            st.write(f'📏 **{column}:** {max_bins} (Fixed)')
+                            bins[column] = max_bins
+
+                current_col += 1
+
+    return bins
+
+```
+

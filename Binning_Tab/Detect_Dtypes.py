@@ -130,7 +130,9 @@ class DtypeDetector:
                 '%d-%m-%Y',
                 '%Y/%m/%d %H:%M',
                 '%Y/%m/%d',
-                '%Y-%m-%d %H:%M:%S%z'
+                '%Y-%m-%d %H:%M:%S%z',
+                '%a %b %d %H:%M:%S %z %Y',
+                '%a %b %d %H:%M:%S +0000 %Y'
             ]
             for fmt in date_formats:
                 s_date = pd.to_datetime(series, errors='coerce', format=fmt, dayfirst=self.dayfirst)
