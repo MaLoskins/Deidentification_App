@@ -107,12 +107,6 @@ class DataIntegrityAssessor:
             print(f"Entropy plot saved to {os.path.abspath(save_path)}")
         else:
             plt.show()
-        
-        if save_path:
-            plt.savefig(save_path, bbox_inches='tight')
-            print(f"Entropy plot saved to {os.path.abspath(save_path)}")
-        else:
-            plt.show()
     
         return fig  # Add this line to return the Figure object
 

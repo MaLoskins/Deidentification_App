@@ -3,12 +3,9 @@
 import streamlit as st
 import pandas as pd
 from Binning_Tab.data_binner import DataBinner
-from Binning_Tab.density_plotter import DensityPlotter
 from Binning_Tab.data_integrity_assessor import DataIntegrityAssessor
 from Binning_Tab.unique_bin_identifier import UniqueBinIdentifier
-import matplotlib.pyplot as plt
 import os
-import tempfile
 import traceback  # For detailed error logging
 
 # Import utility functions and directory constants
@@ -22,7 +19,13 @@ from Binning_Tab.utils import (
     PROCESSED_DATA_DIR,
     REPORTS_DIR,
     UNIQUE_IDENTIFICATIONS_DIR,
-    get_binning_configuration  # Ensure correct function signature
+    get_binning_configuration,  # Ensure correct function signature
+    plot_entropy_and_display,    # Newly added
+    plot_density_plots_and_display,  # Newly added
+    handle_download_binned_data,     # Newly added
+    handle_integrity_assessment,     # Newly added
+    handle_unique_identification_analysis, # Newly added
+    display_unique_identification_results  # Newly added
 )
 
 # Set Streamlit page configuration
@@ -42,11 +45,11 @@ st.title('🛠️ Data Processing and Binning Application')
 with st.sidebar:
     st.header("📂 Upload & Settings")
     uploaded_file = st.file_uploader("📤 Upload your dataset", type=['csv', 'pkl'])
-    file_type = st.selectbox('📁 Select Output File Type', ['csv', 'pkl'], index=0)
+    output_file_type = st.selectbox('📁 Select Output File Type', ['csv', 'pkl'], index=0)
     st.markdown("---")
 
     # Display warning if csv is the selected file type
-    if file_type == 'csv':
+    if output_file_type == 'csv':
         st.warning("⚠️ **Note:** Using CSV may result in loss of data types and categories. This will affect subsequent processes. Incompatible columns will be removed from binning as a result. Consider using Pickle for better preservation.")
 
     st.header("⚙️ Binning Options")
@@ -63,10 +66,19 @@ with st.sidebar:
 
 # Main content area
 if uploaded_file is not None:
-    # Load the raw data
+    # Determine the input file type based on the uploaded file's extension
+    if uploaded_file.name.endswith('.csv'):
+        input_file_type = 'csv'
+    elif uploaded_file.name.endswith('.pkl'):
+        input_file_type = 'pkl'
+    else:
+        st.error("Unsupported file type! Please upload a CSV or Pickle (.pkl) file.")
+        st.stop()
+
+    # Load the raw data using the correct input file type
     try:
         with st.spinner('Loading data...'):
-            Data, error = load_data(file_type, uploaded_file)
+            Data, error = load_data(input_file_type, uploaded_file)
         if error:
             st.error(error)
             st.stop()
@@ -82,14 +94,35 @@ if uploaded_file is not None:
     st.subheader('📊 Data Preview (Original Data)')
     st.dataframe(st.session_state.Data.head())
 
-    # Select columns to bin (only numeric and datetime, excluding identifiers)
-    run_processing(save_type=file_type, output_filename=f'processed_data.{file_type}', file_path=f'Data.csv')
+    
+    # Determine the correct save_type for DataProcessor
+    mapped_save_type = 'pickle' if output_file_type == 'pkl' else 'csv'
+    
+    # Save the uploaded DataFrame to 'Data.csv'
+    data_csv_path = 'Data.csv'
+    try:
+        Data.to_csv(data_csv_path, index=False)
+    except Exception as e:
+        st.error(f"Error saving Data.csv: {e}")
+        st.stop()
+    
+    # Run processing with the correct save_type and file_path
+    run_processing(
+        save_type=mapped_save_type,
+        output_filename=f'processed_data.{output_file_type}',
+        file_path=data_csv_path
+    )
 
     # Load the processed data
-    if file_type == 'csv':
-        processed_data = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{file_type}'))
-    else:
-        processed_data = pd.read_pickle(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{file_type}'))
+    try:
+        if output_file_type == 'csv':
+            processed_data = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{output_file_type}'))
+        else:
+            processed_data = pd.read_pickle(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{output_file_type}'))
+    except Exception as e:
+        st.error(f"Error loading processed data: {e}")
+        st.error(traceback.format_exc())
+        st.stop()
     
     st.session_state.Processed_Data = processed_data.copy()
 
@@ -102,14 +135,12 @@ if uploaded_file is not None:
     selected_columns = st.multiselect('🔢 Select columns to bin', COLUMNS_THAT_CAN_BE_BINNED, key='selected_columns')
 
     if selected_columns:
-        # copy of data frame with only selected columns temp saved as Data.csv or Data.pkl
-            
         # Use the utility function to get binning configuration
-        if file_type == 'csv':
-            processed_data = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{file_type}'))
-        else:
-            processed_data = pd.read_pickle(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{file_type}'))
         try:
+            if output_file_type == 'csv':
+                processed_data = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{output_file_type}'))
+            else:
+                processed_data = pd.read_pickle(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{output_file_type}'))
             bins = get_binning_configuration(processed_data, selected_columns)  # Corrected argument order
         except Exception as e:
             st.error(f"Error in binning configuration: {e}")
@@ -125,8 +156,6 @@ if uploaded_file is not None:
                 # Align both DataFrames (original and binned) to have the same columns
                 Data_aligned, binned_df_aligned = align_dataframes(processed_data, binned_df)
                 
-                # Extract the list of binned columns
-                binned_columns_list = [col for cols in binned_columns.values() for col in cols]
         except Exception as e:
             st.error(f"Error during binning: {e}")
             st.error(traceback.format_exc())  # Detailed error log
@@ -144,118 +173,31 @@ if uploaded_file is not None:
         original_for_assessment = Data_aligned[selected_columns].astype('category')  # Convert to categorical
         binned_for_assessment = binned_df_aligned[selected_columns]  # Already categorical from DataBinner
 
-        # Integrity assessment after binning
-        st.markdown("### 📄 Integrity Loss Report")
-        try:
-            assessor = DataIntegrityAssessor(original_df=original_for_assessment, binned_df=binned_for_assessment)
-            assessor.assess_integrity_loss()
-            report = assessor.generate_report()
-            
-            # Save the report to the 'reports' directory
-            report_filename = 'Integrity_Loss_Report.csv'
-            report_path = save_dataframe(report, 'csv', report_filename, 'reports')
-            
-            st.dataframe(report)
-            
-            overall_loss = assessor.get_overall_loss()
-            st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
-            
-            st.markdown("### 📈 Entropy")
-            try:
-                fig_entropy = assessor.plot_entropy(figsize=(15, 4))  # Create the entropy plot
-                # Save the entropy plot
-                entropy_plot_path = os.path.join(PLOTS_DIR, 'entropy_plot.png')
-                fig_entropy.savefig(entropy_plot_path, bbox_inches='tight')
-                plt.close(fig_entropy)  # Close the figure to free memory
-                # Display in Streamlit
-                st.pyplot(fig_entropy)  # to display
-            except Exception as e:
-                st.error(f"Error plotting entropy: {e}")
-                st.error(traceback.format_exc())  # Detailed error log
-        except Exception as e:
-            st.error(f"Error during integrity assessment: {e}")
-            st.error(traceback.format_exc())  # Detailed error log
+        # Integrity assessment after binning using utility function
+        handle_integrity_assessment(original_for_assessment, binned_for_assessment, PLOTS_DIR)
 
-        # Tabs for Original and Binned Density Plots
-        st.markdown("### 📈 Density Plots")
-        if len(selected_columns) > 1:
-            density_tab1, density_tab2 = st.tabs(["Original Data", "Binned Data"])
-            
-            with density_tab1:
-                try:
-                    plotter_orig = DensityPlotter(
-                        dataframe=original_for_assessment,  # Use original categorical data
-                        category_columns=selected_columns,
-                        figsize=(15, 4),                     
-                        save_path=None,  # We'll handle saving manually
-                        plot_style='ticks'
-                    )
-                    
-                    # Save the original density plot
-                    original_density_plot_path = os.path.join(PLOTS_DIR, 'original_density_plots.png')
-                    fig_orig = plotter_orig.plot_grid()
-                    fig_orig.savefig(original_density_plot_path, bbox_inches='tight')
-                    plt.close(fig_orig)  # Close the figure to free memory
-                    st.pyplot(fig_orig)
-                except Exception as e:
-                    st.error(f"Error plotting original data density: {e}")
-                    st.error(traceback.format_exc())  # Detailed error log
-            
-            with density_tab2:
-                try:
-                    plotter_binned = DensityPlotter(
-                        dataframe=binned_for_assessment,  # Use user-specified binned data
-                        category_columns=selected_columns,
-                        figsize=(15, 4),                     
-                        save_path=None,  # We'll handle saving manually
-                        plot_style='ticks'
-                    )
-                    
-                    # Save the binned density plot
-                    fig_binned = plotter_binned.plot_grid()  # Get the figure object
-                    binned_density_plot_path = os.path.join(PLOTS_DIR, 'binned_density_plots.png')
-                    fig_binned.savefig(binned_density_plot_path, bbox_inches='tight')
-                    plt.close(fig_binned)  # Close the figure to free memory
-                    st.pyplot(fig_binned)
-                except Exception as e:
-                    st.error(f"Error plotting binned data density: {e}")
-                    st.error(traceback.format_exc())  # Detailed error log
-        else:
-            # Print a message if only one column is selected
-            st.info("🔄 **Please select more than one column to display density plots.**")
+        # Plot and display density plots using utility function
+        plot_density_plots_and_display(original_for_assessment, binned_for_assessment, selected_columns, PLOTS_DIR)
         
+        # for columns in selected_columns extract from Data_aligned and replace columns in sessionstate.Data
+        for col in selected_columns:
+            st.session_state.Data[col] = binned_df_aligned[col]
+        
+        # Display updated session state data
+        st.subheader('📊 Data Preview (Updated Data)')
+        st.dataframe(st.session_state.Data.head())
+     
+
+
         st.markdown("---")
 
-        # Download binned data
-        st.markdown("### 💾 Download Binned Data")
-        # Choose file type again for download of bin data
-        file_type_download = st.selectbox('📁 Select Download File Type', ['csv', 'pkl'], index=0, key='download_file_type')
-        try:
-            if file_type_download == 'csv':
-                binned_csv = binned_df_aligned.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Download Binned Data as CSV",
-                    data=binned_csv,
-                    file_name='binned_data.csv',
-                    mime='text/csv',
-                )
-            elif file_type_download == 'pkl':
-                # Save pickle to the 'processed_data' directory
-                pickle_filename = 'binned_data.pkl'
-                pickle_path = save_dataframe(binned_df_aligned, 'pkl', pickle_filename, 'processed_data')
-                
-                with open(pickle_path, 'rb') as f:
-                    binned_pkl = f.read()
-                
-                st.download_button(
-                    label="📥 Download Binned Data as Pickle",
-                    data=binned_pkl,
-                    file_name='binned_data.pkl',
-                    mime='application/octet-stream',
-                )
-        except Exception as e:
-            st.error(f"Error during data download: {e}")
-            st.error(traceback.format_exc())  # Detailed error log
+        # Download binned data using utility function
+        handle_download_binned_data(
+            data=st.session_state.Data,
+            file_type_download=st.selectbox('📁 Select Download File Type', ['csv', 'pkl'], index=0, key='download_file_type'),
+            save_dataframe_func=save_dataframe,
+            plots_dir=PLOTS_DIR
+        )
 
         # Unique Identification Analysis
         st.markdown("### 🔍 Unique Identification Analysis")
@@ -286,38 +228,14 @@ if uploaded_file is not None:
             submit_button = st.form_submit_button(label='🧮 Perform Unique Identification Analysis')
 
         if submit_button:
-            try:
-                with st.spinner('🔍 Analyzing unique identifications... This may take a while for large datasets.'):
-                    # Initialize the UniqueBinIdentifier
-                    identifier = UniqueBinIdentifier(original_df=original_for_assessment, binned_df=binned_for_assessment)
-                    
-                    # Perform unique identification analysis
-                    results = identifier.find_unique_identifications(
-                        min_comb_size=min_comb_size, 
-                        max_comb_size=max_comb_size, 
-                        columns=bin_columns_list
-                    )
-                    
-                    # Display the results
-                    st.success("✅ Unique Identification Analysis Completed!")
-                    st.write("📄 **Unique Identification Results:**")
-                    st.dataframe(results.head(20))  # Show top 20 for brevity
-                    
-                    # Save the results to 'unique_identifications' directory
-                    unique_id_filename = 'unique_identifications.csv'
-                    unique_id_path = save_dataframe(results, 'csv', unique_id_filename, 'unique_identifications')
-                    
-                    # Allow user to download the results
-                    csv = results.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Download Results as CSV",
-                        data=csv,
-                        file_name='unique_identifications.csv',
-                        mime='text/csv',
-                    )
-            except Exception as e:
-                st.error(f"Error during unique identification analysis: {e}")
-                st.error(traceback.format_exc())  # Detailed error log
+            results = handle_unique_identification_analysis(
+                original_df=original_for_assessment,
+                binned_df=binned_for_assessment,
+                bin_columns_list=bin_columns_list,
+                min_comb_size=min_comb_size,
+                max_comb_size=max_comb_size
+            )
+            display_unique_identification_results(results)
     else:
         st.info("🔄 **Please select at least one column to bin.**")
 else:

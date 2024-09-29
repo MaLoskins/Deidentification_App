@@ -41,7 +41,8 @@ class UniqueBinIdentifier:
         self,
         min_comb_size: int = 1,
         max_comb_size: Optional[int] = None,
-        columns: Optional[List[str]] = None
+        columns: Optional[List[str]] = None,
+        progress_callback: Optional[callable] = None
     ) -> pd.DataFrame:
         """
         Analyzes combinations of bin columns to identify how many unique observations
@@ -87,9 +88,8 @@ class UniqueBinIdentifier:
         for comb_size in range(min_comb_size, max_comb_size + 1):
             for comb in combinations(columns, comb_size):
                 combination_counter += 1
-                if combination_counter % 1000 == 0:
-                    print(f"Analyzed {combination_counter} / {total_combinations} combinations...")
-
+                if progress_callback and combination_counter % 1000 == 0:
+                    progress_callback(combination_counter, total_combinations)
                 # Create a temporary DataFrame with the combination of bins
                 temp_df = self.binned_df[list(comb)]
 

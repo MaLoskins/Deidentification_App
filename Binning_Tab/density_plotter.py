@@ -64,18 +64,6 @@ class DensityPlotter:
             fig.delaxes(axes[idx])
 
         plt.tight_layout()
-
-        if self.save_path:
-            save_dir = os.path.dirname(self.save_path)
-            if save_dir:
-                os.makedirs(save_dir, exist_ok=True)
-            try:
-                plt.savefig(self.save_path, dpi=300)
-                print(f"Density plots saved to {self.save_path}")
-            except Exception as e:
-                print(f"Failed to save plot to '{self.save_path}': {e}")
-        else:
-            plt.show()
         
         if self.save_path:
             plt.savefig(self.save_path, dpi=300)
