@@ -30,3 +30,6 @@ Plots/
 # Ignore Python bytecode files
 __pycache__/
 *.py[cod]
+
+# Ignore outputs folder and subfolders
+outputs/

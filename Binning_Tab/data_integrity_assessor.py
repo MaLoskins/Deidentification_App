@@ -7,25 +7,7 @@ import matplotlib.pyplot as plt
 import os
 
 class DataIntegrityAssessor:
-    """
-    A class to assess the integrity loss when reducing the bin count of categorical variables
-    in a Pandas DataFrame by comparing original and binned data.
-
-    Attributes:
-        original_df (pd.DataFrame): The original DataFrame with full integrity.
-        binned_df (pd.DataFrame): The binned DataFrame with reduced bin counts.
-        integrity_report (pd.DataFrame): DataFrame summarizing integrity loss per variable.
-        overall_loss (float): Average percentage loss across all variables.
-    """
-
     def __init__(self, original_df: pd.DataFrame, binned_df: pd.DataFrame):
-        """
-        Initializes the DataIntegrityAssessor with original and binned DataFrames.
-
-        Parameters:
-            original_df (pd.DataFrame): The original DataFrame with full integrity.
-            binned_df (pd.DataFrame): The binned DataFrame with reduced bin counts.
-        """
         self.original_df = original_df.copy()
         self.binned_df = binned_df.copy()
         self.integrity_report = None
@@ -34,13 +16,9 @@ class DataIntegrityAssessor:
         self._validate_dataframes()
 
     def _validate_dataframes(self):
-        """
-        Validates that the original and binned DataFrames have the same columns.
-        """
         if not self.original_df.columns.equals(self.binned_df.columns):
             raise ValueError("Both DataFrames must have the same columns.")
 
-        # Check that all columns are categorical
         for col in self.original_df.columns:
             if not pd.api.types.is_object_dtype(self.original_df[col]) and not pd.api.types.is_categorical_dtype(self.original_df[col]):
                 raise TypeError(f"Column '{col}' is not categorical in the original DataFrame.")
@@ -49,26 +27,10 @@ class DataIntegrityAssessor:
 
     @staticmethod
     def calculate_entropy(series: pd.Series) -> float:
-        """
-        Calculate the entropy of a pandas Series.
-
-        Parameters:
-            series (pd.Series): The categorical data series.
-
-        Returns:
-            float: Entropy in bits.
-        """
         counts = series.value_counts(normalize=True)
         return entropy(counts, base=2)
 
     def assess_integrity_loss(self):
-        """
-        Assess the integrity loss between the original and binned DataFrames.
-
-        Populates:
-            self.integrity_report (pd.DataFrame): Summary of integrity loss per variable.
-            self.overall_loss (float): Average percentage loss across all variables.
-        """
         integrity_data = {
             'Variable': [],
             'Original Entropy (bits)': [],
@@ -93,35 +55,17 @@ class DataIntegrityAssessor:
         self.overall_loss = round(self.integrity_report['Percentage Loss (%)'].mean(), 2)
 
     def generate_report(self) -> pd.DataFrame:
-        """
-        Generates and returns the integrity loss report.
-
-        Returns:
-            pd.DataFrame: DataFrame summarizing the integrity loss per variable.
-        """
         if self.integrity_report is None:
             self.assess_integrity_loss()
         return self.integrity_report.copy()
 
     def save_report(self, filepath: str):
-        """
-        Saves the integrity loss report to a CSV file.
-
-        Parameters:
-            filepath (str): The path where the report will be saved.
-        """
         if self.integrity_report is None:
             self.assess_integrity_loss()
         self.integrity_report.to_csv(filepath, index=False)
         print(f"Integrity report saved to {os.path.abspath(filepath)}")
 
     def plot_entropy(self, save_path: str = None, figsize: tuple = (10, 6)):
-        """
-        Plots the original and binned entropy for each variable.
-
-        Parameters:
-            save_path (str, optional): If provided, saves the plot to the specified path.
-        """
         if self.integrity_report is None:
             self.assess_integrity_loss()
 
@@ -163,14 +107,16 @@ class DataIntegrityAssessor:
             print(f"Entropy plot saved to {os.path.abspath(save_path)}")
         else:
             plt.show()
+        
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+            print(f"Entropy plot saved to {os.path.abspath(save_path)}")
+        else:
+            plt.show()
+    
+        return fig  # Add this line to return the Figure object
 
     def get_overall_loss(self) -> float:
-        """
-        Returns the overall average percentage integrity loss across all variables.
-
-        Returns:
-            float: Overall average integrity loss percentage.
-        """
         if self.overall_loss is None:
             self.assess_integrity_loss()
         return self.overall_loss
