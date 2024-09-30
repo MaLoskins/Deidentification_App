@@ -223,25 +223,9 @@ def unique_identification_section(original_for_assessment, binned_for_assessment
         )
         display_unique_identification_results(results)
 
-def new_section():
-    st.markdown("---")
-    st.markdown("### 📈 Select Region Columns to retrieve latitude and longitude")
-    with st.expander("ℹ️ **About:**"):
-        st.write("""
-            This new section provides additional data visualizations to help you gain deeper insights into your dataset.
-            Explore various charts and graphs to better understand the distribution and relationships within your data.
-        """)
-    
-    # Example visualization: Correlation Heatmap
-    if st.button("Generate Correlation Heatmap"):
-        try:
-            with st.spinner('Generating Correlation Heatmap...'):
-                correlation_matrix = st.session_state.Data.corr()
-                fig = st.pyplot(correlation_matrix.style.background_gradient(cmap='coolwarm').set_precision(2).to_excel())
-                st.write(correlation_matrix)
-        except Exception as e:
-            st.error(f"Error generating correlation heatmap: {e}")
-            st.error(traceback.format_exc())
+# def new_section():
+#     st.markdown("---")
+#     st.markdown("### 📈 Select Region Columns to retrieve latitude and longitude")
 
 def main():
     """Main function to orchestrate the Streamlit app."""
@@ -267,12 +251,13 @@ def main():
         
         if selected_columns:
             Data_aligned, binned_df_aligned = perform_binning(st.session_state.Processed_Data, selected_columns, binning_method)
+            # new_section()  # Adding the new section here
             perform_integrity_assessment(Data_aligned, binned_df_aligned, selected_columns)
             plot_density(Data_aligned[selected_columns].astype('category'), binned_df_aligned[selected_columns], selected_columns)
             update_session_data(binned_df_aligned, selected_columns)
             download_binned_data()
             unique_identification_section(Data_aligned, binned_df_aligned, selected_columns)
-            new_section()  # Adding the new section here
+
         else:
             st.info("🔄 **Please select at least one column to bin.**")
     else:
