@@ -44,18 +44,6 @@ class UniqueBinIdentifier:
         columns: Optional[List[str]] = None,
         progress_callback: Optional[callable] = None
     ) -> pd.DataFrame:
-        """
-        Analyzes combinations of bin columns to identify how many unique observations
-        in the original DataFrame are uniquely identified by each combination.
-
-        Parameters:
-            min_comb_size (int, optional): Minimum size of column combinations to consider. Default is 1.
-            max_comb_size (int, optional): Maximum size of column combinations to consider. If None, uses all columns.
-            columns (List[str], optional): Specific columns to consider for combinations. If None, uses all binned columns.
-
-        Returns:
-            pd.DataFrame: DataFrame with columns 'Combination' and 'Unique_Identifications'.
-        """
         if columns is None:
             columns = list(self.binned_df.columns)
         else:

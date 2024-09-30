@@ -48,12 +48,13 @@ def sidebar_inputs():
 
         # Display warning if CSV is selected
         if output_file_type == 'csv':
-            st.warning("⚠️ **Note:** Using CSV may result in loss of data types and categories. This will affect subsequent processes. Incompatible columns will be removed from binning as a result. Consider using Pickle for better preservation.")
+            st.warning("⚠️ **Note:** Using CSV will result in the loss of some meta-data regarding data types. This will not affect the application's functionality.")
 
         st.header("⚙️ Binning Options")
         binning_method = st.selectbox('🔧 Select Binning Method', ['Quantile', 'Equal Width'])
-        if binning_method == 'Quantile':
-            st.warning("⚠️ **Note:** Using Quantile binning will prevent the output of 'Original Data' Density Plots due to granularity.")
+        if binning_method == 'Equal Width':
+            st.warning("⚠️ **Note:** Using Equal Width will drastically affect the distribution of your data. (Large integrity loss)")  
+        
         st.markdown("---")
 
         st.header("ℹ️ About")
@@ -89,7 +90,7 @@ def load_and_preview_data(uploaded_file, input_file_type):
 def save_raw_data(Data, output_file_type):
     """Save the raw data to a CSV or Pickle file."""
     mapped_save_type = 'pickle' if output_file_type == 'pkl' else 'csv'
-    data_csv_path = 'Data.csv'
+    data_csv_path = f'Data.{output_file_type}'
     try:
         if mapped_save_type == 'pickle':
             Data.to_pickle(data_csv_path)
@@ -102,23 +103,11 @@ def save_raw_data(Data, output_file_type):
 
 def run_data_processing(mapped_save_type, output_file_type, data_csv_path):
     """Run the data processing pipeline."""
-    run_processing(
+    processed_data = run_processing(
         save_type=mapped_save_type,
         output_filename=f'processed_data.{output_file_type}',
         file_path=data_csv_path
     )
-
-def load_processed_data(output_file_type):
-    """Load the processed data."""
-    try:
-        if output_file_type == 'csv':
-            processed_data = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{output_file_type}'))
-        else:
-            processed_data = pd.read_pickle(os.path.join(PROCESSED_DATA_DIR, f'processed_data.{output_file_type}'))
-    except Exception as e:
-        st.error(f"Error loading processed data: {e}")
-        st.error(traceback.format_exc())
-        st.stop()
 
     st.session_state.Processed_Data = processed_data.copy()
 
@@ -151,7 +140,6 @@ def main():
         load_and_preview_data(uploaded_file, input_file_type)
         mapped_save_type, data_csv_path = save_raw_data(st.session_state.Original_Data, output_file_type)
         run_data_processing(mapped_save_type, output_file_type, data_csv_path)
-        load_processed_data(output_file_type)
     else:
         st.info("🔄 **Please upload a file to get started.**")
         st.stop()
@@ -312,19 +300,19 @@ def unique_identification_section(original_for_assessment, binned_for_assessment
 
         if max_comb_size > 5:
             st.warning("⚠️  **Note:** Combinations larger than 5 may take a long time to compute depending on bin count.")
+
         # Submit button
         submit_button = st.form_submit_button(label='🧮 Perform Unique Identification Analysis')
 
     if submit_button:
-        with st.spinner('Performing Unique Identification Analysis...'):
-            results = handle_unique_identification_analysis(
-                original_df=original_for_assessment,
-                binned_df=binned_for_assessment,
-                bin_columns_list=selected_columns,
-                min_comb_size=min_comb_size,
-                max_comb_size=max_comb_size
-            )
-            display_unique_identification_results(results)
+        results = handle_unique_identification_analysis(
+            original_df=original_for_assessment,
+            binned_df=binned_for_assessment,
+            bin_columns_list=selected_columns,
+            min_comb_size=min_comb_size,
+            max_comb_size=max_comb_size
+        )
+        display_unique_identification_results(results)
 
 if __name__ == "__main__":
     main()

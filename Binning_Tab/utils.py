@@ -76,8 +76,9 @@ def run_processing(save_type='csv', output_filename='Processed_Data.csv', file_p
             date_format=None,  # Keep as None to retain datetime dtype
             save_type=save_type
         )
-        processor.process()
-        return output_filepath
+        processed_data = processor.process()
+        return processed_data
+        
     except Exception as e:
         st.error(f"Error during data processing: {e}")
         st.stop()
@@ -455,13 +456,11 @@ def handle_unique_identification_analysis(original_df, binned_df, bin_columns_li
             # Calculate total combinations for progress tracking
             from math import comb
             total_combinations = sum(comb(len(bin_columns_list), r) for r in range(min_comb_size, max_comb_size + 1))
-            current = 0
 
-            def update_progress():
-                nonlocal current
-                current += 1
-                progress = current / total_combinations
-                progress_bar.progress(min(progress, 1.0))
+            def update_progress(combination_counter, total_combinations):
+                progress = combination_counter / total_combinations
+                st.session_state.progress = min(progress, 1.0)
+                progress_bar.progress(st.session_state.progress)
             
             # Initialize the UniqueBinIdentifier
             identifier = UniqueBinIdentifier(original_df=original_df, binned_df=binned_df)                    

@@ -112,20 +112,11 @@ class DataProcessor:
                 print(f"Failed to save processed data: {e}")
             #---------------------------------------------------------------------------
 
-        elif self.save_type == 'parquet':
-            #---------------------------------------------------------------------------
-            # Save the processed data to the specified output Pickle file
-            try:
-                processed_data.to_parquet(self.output_filepath, index=False)
-                self.detector.logger.info(f"Processed data saved to {self.output_filepath}")
-            except Exception as e:
-                self.detector.logger.error(f"Failed to save processed data: {e}")
-                print(f"Failed to save processed data: {e}")
-            #---------------------------------------------------------------------------
-
         # If configured to return category mappings, save them
         if self.return_category_mappings:
             self.save_category_mappings()
+
+        return processed_data
         
 
     def save_category_mappings(self):
