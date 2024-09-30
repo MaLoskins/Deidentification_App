@@ -61,7 +61,7 @@ def sidebar_inputs():
             This application allows you to upload a dataset, process and bin numerical and datetime columns, 
             assess data integrity post-binning, visualize data distributions, and perform unique identification analysis.
         """)
-    
+
     return uploaded_file, output_file_type, binning_method
 
 def load_and_preview_data(uploaded_file, input_file_type):
@@ -76,20 +76,27 @@ def load_and_preview_data(uploaded_file, input_file_type):
         st.error(f"Error loading data: {e}")
         st.error(traceback.format_exc())
         st.stop()
-    
+
+    # Clean column names by removing '\' and '/'
+    Data.columns = Data.columns.str.replace(r'[\\/]', '', regex=True)
+
     st.session_state.Original_Data = Data.copy()
-    
+    st.session_state.Global_Data = Data.copy()  # Initialize Global_Data
+
     st.subheader('📊 Data Preview (Original Data)')
     st.dataframe(st.session_state.Original_Data.head())
 
 def save_raw_data(Data, output_file_type):
-    """Save the raw data to a CSV file."""
+    """Save the raw data to a CSV or Pickle file."""
     mapped_save_type = 'pickle' if output_file_type == 'pkl' else 'csv'
     data_csv_path = 'Data.csv'
     try:
-        Data.to_csv(data_csv_path, index=False)
+        if mapped_save_type == 'pickle':
+            Data.to_pickle(data_csv_path)
+        else:
+            Data.to_csv(data_csv_path, index=False)
     except Exception as e:
-        st.error(f"Error saving Data.csv: {e}")
+        st.error(f"Error saving Data.{output_file_type}: {e}")
         st.stop()
     return mapped_save_type, data_csv_path
 
@@ -100,7 +107,6 @@ def run_data_processing(mapped_save_type, output_file_type, data_csv_path):
         output_filename=f'processed_data.{output_file_type}',
         file_path=data_csv_path
     )
-    
 
 def load_processed_data(output_file_type):
     """Load the processed data."""
@@ -113,19 +119,125 @@ def load_processed_data(output_file_type):
         st.error(f"Error loading processed data: {e}")
         st.error(traceback.format_exc())
         st.stop()
-    
+
     st.session_state.Processed_Data = processed_data.copy()
 
-def select_columns_to_bin(processed_data):
-    """Allow user to select columns to bin."""
-    COLUMNS_THAT_CAN_BE_BINNED = processed_data.select_dtypes(
-        include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]']
-    ).columns.tolist()
-    selected_columns = st.multiselect('🔢 Select columns to bin', COLUMNS_THAT_CAN_BE_BINNED, key='selected_columns')
-    return selected_columns
+def initialize_session_state():
+    """Initialize session state variables if not already present."""
+    if 'Original_Data' not in st.session_state:
+        st.session_state.Original_Data = pd.DataFrame()
+    if 'Global_Data' not in st.session_state:
+        st.session_state.Global_Data = pd.DataFrame()
+    if 'Binning_Selected_Columns' not in st.session_state:
+        st.session_state.Binning_Selected_Columns = []
+    # Removed 'Manipulation_Selected_Columns' as it's no longer needed
+
+def main():
+    """Main function to orchestrate the Streamlit app."""
+    setup_page()
+    initialize_session_state()
+    uploaded_file, output_file_type, binning_method = sidebar_inputs()
+
+    if uploaded_file is not None:
+        # Determine input file type
+        if uploaded_file.name.endswith('.csv'):
+            input_file_type = 'csv'
+        elif uploaded_file.name.endswith('.pkl'):
+            input_file_type = 'pkl'
+        else:
+            st.error("Unsupported file type! Please upload a CSV or Pickle (.pkl) file.")
+            st.stop()
+
+        load_and_preview_data(uploaded_file, input_file_type)
+        mapped_save_type, data_csv_path = save_raw_data(st.session_state.Original_Data, output_file_type)
+        run_data_processing(mapped_save_type, output_file_type, data_csv_path)
+        load_processed_data(output_file_type)
+    else:
+        st.info("🔄 **Please upload a file to get started.**")
+        st.stop()
+
+    # Create Tabs
+    tabs = st.tabs(["📊 Binning", "🛠️ Manipulation", "🔍 Unique Identification Analysis"])
+
+    ######################
+    # Binning Tab
+    ######################
+    with tabs[0]:
+        st.header("📊 Binning")
+        st.markdown("### 🔢 Select Columns to Bin")
+
+        # Determine columns available for binning (no exclusion)
+        available_columns = st.session_state.Processed_Data.select_dtypes(
+            include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]']
+        ).columns.tolist()
+
+        selected_columns = st.multiselect(
+            'Select columns to bin',
+            options=available_columns,
+            default=st.session_state.Binning_Selected_Columns,
+            key='binning_columns'
+        )
+        st.session_state.Binning_Selected_Columns = selected_columns
+
+        if selected_columns:
+            Data_aligned, binned_df_aligned = perform_binning(
+                st.session_state.Processed_Data,
+                selected_columns,
+                binning_method
+            )
+            perform_integrity_assessment(Data_aligned, binned_df_aligned, selected_columns)
+            plot_density(
+                Data_aligned[selected_columns].astype('category'),
+                binned_df_aligned[selected_columns],
+                selected_columns
+            )
+            # Update Global_Data
+            st.session_state.Global_Data = st.session_state.Original_Data.copy()
+            for col in selected_columns:
+                st.session_state.Global_Data[col] = binned_df_aligned[col]
+
+            st.subheader('📊 Data Preview (Global Data)')
+            st.dataframe(st.session_state.Global_Data.head())
+
+            download_binned_data()
+        else:
+            st.info("🔄 **Please select at least one column to bin.**")
+
+    ######################
+    # Manipulation Tab (Placeholder)
+    ######################
+    with tabs[1]:
+        st.header("🛠️ Manipulation")
+        st.markdown("### 🔧 Adding this feature later.")
+
+        st.info("🔄 **Manipulation functionality will be added here in future updates.**")
+
+    ######################
+    # Unique Identification Analysis Tab
+    ######################
+    with tabs[2]:
+        st.header("🔍 Unique Identification Analysis")
+        st.markdown("### 🔢 Selected Columns for Analysis")
+
+        # Use only columns selected in Binning tab
+        selected_columns = st.session_state.Binning_Selected_Columns
+
+        if not selected_columns:
+            st.warning("⚠️ **No columns selected in Binning tab for analysis.**")
+            st.info("🔄 **Please select columns in the Binning tab to perform Unique Identification Analysis.**")
+        else:
+            st.write(f"**Columns selected for analysis:** {', '.join(selected_columns)}")
+
+            # Format selected columns as categorical
+            analysis_df = st.session_state.Global_Data[selected_columns].astype('category')
+
+            unique_identification_section(
+                original_for_assessment=st.session_state.Original_Data[selected_columns].astype('category'),
+                binned_for_assessment=analysis_df,
+                selected_columns=selected_columns
+            )
 
 def perform_binning(processed_data, selected_columns, binning_method):
-    # show dtypes in app for processed_data
     """Perform the binning process on selected columns."""
     try:
         bins = get_binning_configuration(processed_data, selected_columns)
@@ -138,14 +250,14 @@ def perform_binning(processed_data, selected_columns, binning_method):
         with st.spinner('Binning data...'):
             binner = DataBinner(processed_data, method=binning_method.lower())
             binned_df, binned_columns = binner.bin_columns(bins)
-            
+
             # Align both DataFrames (original and binned) to have the same columns
             Data_aligned, binned_df_aligned = align_dataframes(processed_data, binned_df)
     except Exception as e:
         st.error(f"Error during binning: {e}")
         st.error(traceback.format_exc())
         st.stop()
-    
+
     st.success("✅ Binning completed successfully!")
 
     # Display binned columns categorization
@@ -153,35 +265,25 @@ def perform_binning(processed_data, selected_columns, binning_method):
     for dtype, cols in binned_columns.items():
         if cols:
             st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
-    
+
     return Data_aligned, binned_df_aligned
 
 def perform_integrity_assessment(Data_aligned, binned_df_aligned, selected_columns):
     """Assess data integrity after binning."""
     original_for_assessment = Data_aligned[selected_columns].astype('category')
     binned_for_assessment = binned_df_aligned[selected_columns]
-    
+
     handle_integrity_assessment(original_for_assessment, binned_for_assessment, PLOTS_DIR)
 
 def plot_density(original_for_assessment, binned_for_assessment, selected_columns):
     """Plot and display density plots."""
     plot_density_plots_and_display(original_for_assessment, binned_for_assessment, selected_columns, PLOTS_DIR)
 
-def update_session_data(binned_df_aligned, selected_columns):
-    """Update session state with binned data."""
-    st.session_state.Data = st.session_state.Original_Data.copy()
-    # Updating Data for binned selection
-    for col in selected_columns:
-        st.session_state.Data[col] = binned_df_aligned[col]
-
-    st.subheader('📊 Data Preview (Updated Data)')
-    st.dataframe(st.session_state.Data.head())
-
 def download_binned_data():
     """Handle downloading of the binned data."""
     handle_download_binned_data(
-        data=st.session_state.Data,
-        file_type_download=st.selectbox('📁 Select Download File Type', ['csv', 'pkl'], index=0, key='download_file_type'),
+        data=st.session_state.Global_Data,
+        file_type_download=st.selectbox('📁 Select Download File Type', ['csv', 'pkl'], index=0, key='download_file_type_download'),
         save_dataframe_func=save_dataframe,
         plots_dir=PLOTS_DIR
     )
@@ -207,61 +309,22 @@ def unique_identification_section(original_for_assessment, binned_for_assessment
             min_comb_size = st.number_input('Minimum Combination Size', min_value=1, max_value=col_count, value=1, step=1)
         with col2:
             max_comb_size = st.number_input('Maximum Combination Size', min_value=min_comb_size, max_value=col_count, value=col_count, step=1)
-        
+
         if max_comb_size > 5:
             st.warning("⚠️  **Note:** Combinations larger than 5 may take a long time to compute depending on bin count.")
         # Submit button
         submit_button = st.form_submit_button(label='🧮 Perform Unique Identification Analysis')
 
     if submit_button:
-        results = handle_unique_identification_analysis(
-            original_df=original_for_assessment,
-            binned_df=binned_for_assessment,
-            bin_columns_list=selected_columns,
-            min_comb_size=min_comb_size,
-            max_comb_size=max_comb_size
-        )
-        display_unique_identification_results(results)
-
-# def new_section():
-#     st.markdown("---")
-#     st.markdown("### 📈 Select Region Columns to retrieve latitude and longitude")
-
-def main():
-    """Main function to orchestrate the Streamlit app."""
-    setup_page()
-    uploaded_file, output_file_type, binning_method = sidebar_inputs()
-    
-    if uploaded_file is not None:
-        # Determine input file type
-        if uploaded_file.name.endswith('.csv'):
-            input_file_type = 'csv'
-        elif uploaded_file.name.endswith('.pkl'):
-            input_file_type = 'pkl'
-        else:
-            st.error("Unsupported file type! Please upload a CSV or Pickle (.pkl) file.")
-            st.stop()
-        
-        load_and_preview_data(uploaded_file, input_file_type)
-        mapped_save_type, data_csv_path = save_raw_data(st.session_state.Original_Data, output_file_type)
-        run_data_processing(mapped_save_type, output_file_type, data_csv_path)
-        load_processed_data(output_file_type)
-        
-        selected_columns = select_columns_to_bin(st.session_state.Processed_Data)
-        
-        if selected_columns:
-            Data_aligned, binned_df_aligned = perform_binning(st.session_state.Processed_Data, selected_columns, binning_method)
-            # new_section()  # Adding the new section here
-            perform_integrity_assessment(Data_aligned, binned_df_aligned, selected_columns)
-            plot_density(Data_aligned[selected_columns].astype('category'), binned_df_aligned[selected_columns], selected_columns)
-            update_session_data(binned_df_aligned, selected_columns)
-            download_binned_data()
-            unique_identification_section(Data_aligned, binned_df_aligned, selected_columns)
-
-        else:
-            st.info("🔄 **Please select at least one column to bin.**")
-    else:
-        st.info("🔄 **Please upload a file to get started.**")
+        with st.spinner('Performing Unique Identification Analysis...'):
+            results = handle_unique_identification_analysis(
+                original_df=original_for_assessment,
+                binned_df=binned_for_assessment,
+                bin_columns_list=selected_columns,
+                min_comb_size=min_comb_size,
+                max_comb_size=max_comb_size
+            )
+            display_unique_identification_results(results)
 
 if __name__ == "__main__":
     main()

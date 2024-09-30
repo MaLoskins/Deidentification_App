@@ -19,6 +19,7 @@ PROCESSED_DATA_DIR = os.path.join(OUTPUT_DIR, "processed_data")
 REPORTS_DIR = os.path.join(OUTPUT_DIR, "reports")
 PLOTS_DIR = os.path.join(OUTPUT_DIR, "plots")
 UNIQUE_IDENTIFICATIONS_DIR = os.path.join(OUTPUT_DIR, "unique_identifications")
+CAT_MAPPING_DIR = os.path.join(OUTPUT_DIR, "category_mappings")
 
 def create_output_directories():
     """
@@ -62,7 +63,7 @@ def run_processing(save_type='csv', output_filename='Processed_Data.csv', file_p
             output_filepath=output_filepath,
             report_path=report_path,
             return_category_mappings=True,
-            mapping_directory='Category_Mappings',
+            mapping_directory=CAT_MAPPING_DIR,
             parallel_processing=False,
             date_threshold=0.6,
             numeric_threshold=0.9,
@@ -493,7 +494,7 @@ def display_unique_identification_results(results):
         # Display the results
         st.success("✅ Unique Identification Analysis Completed!")
         st.write("📄 **Unique Identification Results:**")
-        st.dataframe(results)  # Show up to 100
+        st.dataframe(results) 
         
         # Save the results to 'unique_identifications' directory
         unique_id_filename = 'unique_identifications.csv'
