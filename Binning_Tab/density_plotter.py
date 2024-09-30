@@ -44,21 +44,21 @@ class DensityPlotter:
         sns.set_style(self.plot_style)
 
         # Validate columns
-        self._valicategory_columns()
+        self._validate_category_columns()
 
-    def _valicategory_columns(self):
+    def _validate_category_columns(self):
         """
         Validate that the specified columns exist in the DataFrame and have appropriate data types.
         """
         for col in self.category_columns:
             if col not in self.dataframe.columns:
-                raise ValueError(f"Date column '{col}' does not exist in the DataFrame.")
+                raise ValueError(f"Column '{col}' does not exist in the DataFrame.")
             if not (
                 pd.api.types.is_categorical_dtype(self.dataframe[col]) or
                 pd.api.types.is_integer_dtype(self.dataframe[col])
             ):
                 raise TypeError(
-                    f"Date column '{col}' is not of categorical dtype or integer dtype."
+                    f"Column '{col}' is not of categorical dtype or integer dtype."
                 )
 
     def plot_grid(self):
@@ -83,11 +83,11 @@ class DensityPlotter:
 
         plot_idx = 0  # Index to track the current subplot
 
-        # Plot Columns as Density Plots
+        # Plot Columns with Histogram and Density Plots
         for col in self.category_columns:
             ax = axes[plot_idx]
             try:
-                # Convert integer columns to categorical
+                # Convert integer columns to categorical codes
                 if pd.api.types.is_integer_dtype(self.dataframe[col]):
                     data = self.dataframe[col].astype('category').cat.codes
                 else:
@@ -96,20 +96,54 @@ class DensityPlotter:
                 # Get the counts for each category
                 counts = self.dataframe[col].value_counts().sort_index()
 
-                # Create a density plot using counts
-                sns.kdeplot(
-                    data=counts.values,
-                    ax=ax,
-                    fill=True,
-                    color='orange',
-                    bw_adjust=0.5  # Adjust bandwidth for better visualization
-                )
+                # Determine if histogram should be overlaid
+                unique_categories = counts.size
+
+                # Plot histogram first if unique categories < 30
+                if unique_categories < 100:
+                    sns.histplot(
+                        counts.values,
+                        ax=ax,
+                        color='blue',
+                        alpha=0.4,
+                        bins=unique_categories,
+                        discrete=True,
+                        stat='density',  # Normalize histogram to density
+                        label='Histogram'
+                    )
+
+                    # Overlay density plot
+                    sns.kdeplot(
+                        data=counts.values,
+                        ax=ax,
+                        fill=True,
+                        color='orange',
+                        bw_adjust=0.5,  # Adjust bandwidth for better visualization
+                        label='Density'
+                    )
+
+                    # Add legend to differentiate plots
+                    ax.legend()
+                else:
+                    # Plot only density plot for columns with >=30 unique categories
+                    sns.kdeplot(
+                        data=counts.values,
+                        ax=ax,
+                        fill=True,
+                        color='orange',
+                        bw_adjust=0.5,  # Adjust bandwidth for better visualization
+                        label='Density'
+                    )
+                    ax.legend()
+
+                # Set plot titles and labels
                 ax.set_title(col)             # Add title
                 ax.set_ylabel('Density')
                 ax.set_xlabel('')             # Remove x label
                 ax.set_xticks([])             # Remove x ticks
+
             except Exception as e:
-                print(f"Failed to plot date column '{col}': {e}")
+                print(f"Failed to plot column '{col}': {e}")
             plot_idx += 1
 
         # Remove any unused subplots
@@ -131,5 +165,5 @@ class DensityPlotter:
                 print(f"Failed to save plot to '{self.save_path}': {e}")
         else:
             plt.show()
-        
+
         return fig

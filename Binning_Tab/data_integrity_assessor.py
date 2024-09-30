@@ -77,8 +77,8 @@ class DataIntegrityAssessor:
         width = 0.35  # the width of the bars
 
         fig, ax = plt.subplots(figsize=figsize)
-        rects1 = ax.bar(x - width/2, original_entropy, width, label='Original Entropy')
-        rects2 = ax.bar(x + width/2, binned_entropy, width, label='Binned Entropy')
+        rects1 = ax.bar(x - width/2, original_entropy, width, label='Original Entropy', alpha=0.5, edgecolor='blue', color='blue')
+        rects2 = ax.bar(x + width/2, binned_entropy, width, label='Binned Entropy', alpha=0.5, edgecolor='orange', color='orange')
 
         # Add some text for labels, title and custom x-axis tick labels, etc.
         ax.set_ylabel('Entropy (bits)')
