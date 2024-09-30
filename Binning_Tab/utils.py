@@ -67,7 +67,7 @@ def run_processing(save_type='csv', output_filename='Processed_Data.csv', file_p
             date_threshold=0.6,
             numeric_threshold=0.9,
             factor_threshold_ratio=0.2,
-            factor_threshold_unique=500,
+            factor_threshold_unique=1000,
             dayfirst=True,
             log_level='INFO',
             log_file=None,
@@ -493,7 +493,7 @@ def display_unique_identification_results(results):
         # Display the results
         st.success("✅ Unique Identification Analysis Completed!")
         st.write("📄 **Unique Identification Results:**")
-        st.dataframe(results.head(20))  # Show top 20 for brevity
+        st.dataframe(results)  # Show up to 100
         
         # Save the results to 'unique_identifications' directory
         unique_id_filename = 'unique_identifications.csv'
