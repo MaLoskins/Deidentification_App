@@ -2,7 +2,8 @@
 
 import pandas as pd
 import os
-from Binning_Tab.Detect_Dtypes import DtypeDetector  # Ensure dtype_detector.py is in the same directory or PYTHONPATH
+from src.data_processing import DtypeDetector
+  # Ensure dtype_detector.py is in the same directory or PYTHONPATH
 import logging
 from typing import Optional, Dict, Any, Tuple
 

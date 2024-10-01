@@ -2,23 +2,19 @@
 
 import streamlit as st
 import pandas as pd
-from Binning_Tab.data_binner import DataBinner
-from Binning_Tab.data_integrity_assessor import DataIntegrityAssessor
-from Binning_Tab.unique_bin_identifier import UniqueBinIdentifier
 import os
 import traceback  # For detailed error logging
 
-# Import utility functions for Binning
-from Binning_Tab.utils import (
+# Import binning modules
+from src.binning import DataBinner
+
+# Import utility functions
+from src.utils import (
     hide_streamlit_style,
     load_data,
     align_dataframes,
     save_dataframe,
     run_processing,
-    PLOTS_DIR,
-    PROCESSED_DATA_DIR,
-    REPORTS_DIR,
-    UNIQUE_IDENTIFICATIONS_DIR,
     get_binning_configuration,
     plot_entropy_and_display,
     plot_density_plots_and_display,
@@ -28,9 +24,19 @@ from Binning_Tab.utils import (
     display_unique_identification_results
 )
 
-# Import utility functions for Location Granulariser
+# Import path configurations
+from src.config import (
+    PLOTS_DIR,
+    PROCESSED_DATA_DIR,
+    REPORTS_DIR,
+    UNIQUE_IDENTIFICATIONS_DIR,
+    CAT_MAPPING_DIR,
+    DATA_DIR,
+    LOGS_DIR
+)
 
-from Location_Granulariser.geocoding import (
+# Import location granularizer functions
+from src.location_granularizer import (
     extract_gpe_entities,
     interpret_location,
     geocode_location_with_cache,
@@ -41,6 +47,8 @@ from Location_Granulariser.geocoding import (
     prepare_map_data
 )
 
+
+
 def setup_page():
     """Configure the Streamlit page and apply custom styles."""
     st.set_page_config(
@@ -50,6 +58,7 @@ def setup_page():
     )
     hide_streamlit_style()
     st.title('🛠️ Data Processing and Binning Application')
+
 
 def sidebar_inputs():
     """Render the sidebar with file upload, settings, binning options, and info."""
@@ -78,6 +87,7 @@ def sidebar_inputs():
 
     return uploaded_file, output_file_type, binning_method
 
+
 def load_and_preview_data(uploaded_file, input_file_type):
     """Load the uploaded data and display a preview."""
     try:
@@ -94,53 +104,63 @@ def load_and_preview_data(uploaded_file, input_file_type):
     # Clean column names by removing '\' and '/'
     Data.columns = Data.columns.str.replace(r'[\\/]', '', regex=True)
 
-    st.session_state.Original_Data = Data.copy()
-    st.session_state.Global_Data = Data.copy()  # Initialize Global_Data
+    st.session_state.ORIGINAL_DATA = Data.copy()
+    st.session_state.GLOBAL_DATA = Data.copy()  # Initialize GLOBAL_DATA
 
     st.subheader('📊 Data Preview (Original Data)')
-    st.dataframe(st.session_state.Original_Data.head())
+    st.dataframe(st.session_state.ORIGINAL_DATA.head())
+
 
 def save_raw_data(Data, output_file_type):
     """Save the raw data to a CSV or Pickle file."""
     mapped_save_type = 'pickle' if output_file_type == 'pkl' else 'csv'
-    data_csv_path = f'Data.{output_file_type}'
+    data_path = os.path.join(DATA_DIR, f'Data.{output_file_type}')
     try:
         if mapped_save_type == 'pickle':
-            Data.to_pickle(data_csv_path)
+            Data.to_pickle(data_path)
         else:
-            Data.to_csv(data_csv_path, index=False)
+            Data.to_csv(data_path, index=False)
     except Exception as e:
         st.error(f"Error saving Data.{output_file_type}: {e}")
         st.stop()
-    return mapped_save_type, data_csv_path
+    return mapped_save_type, data_path
 
-def run_data_processing(mapped_save_type, output_file_type, data_csv_path):
+
+def run_data_processing(mapped_save_type, output_file_type, file_path):
     """Run the data processing pipeline."""
     processed_data = run_processing(
         save_type=mapped_save_type,
         output_filename=f'processed_data.{output_file_type}',
-        file_path=data_csv_path
+        file_path=os.path.join(DATA_DIR, file_path)
     )
 
     st.session_state.Processed_Data = processed_data.copy()
 
+
 def initialize_session_state():
     """Initialize session state variables if not already present."""
-    if 'Original_Data' not in st.session_state:
-        st.session_state.Original_Data = pd.DataFrame()
-    if 'Global_Data' not in st.session_state:
-        st.session_state.Global_Data = pd.DataFrame()
+    if 'ORIGINAL_DATA' not in st.session_state:
+        st.session_state.ORIGINAL_DATA = pd.DataFrame()
+    if 'GLOBAL_DATA' not in st.session_state:
+        st.session_state.GLOBAL_DATA = pd.DataFrame()
+
+    ##############      SELECTION CHECKS       ##############
     if 'Binning_Selected_Columns' not in st.session_state:
         st.session_state.Binning_Selected_Columns = []
+
+
     if 'Location_Selected_Columns' not in st.session_state:
         st.session_state.Location_Selected_Columns = []
     if 'Granular_Location_Column_Set' not in st.session_state:
-        st.session_state.Granular_Location_Column_Set = False # Different Method to Binning because of computation time
+        st.session_state.Granular_Location_Column_Set = False 
+    ##########################################################
+
     if 'geocoded_data' not in st.session_state:
         st.session_state.geocoded_data = None
     if 'geocoded_dict' not in st.session_state:
         st.session_state.geocoded_dict = {}
     # Removed 'Manipulation_Selected_Columns' as it's no longer needed
+
 
 def main():
     """Main function to orchestrate the Streamlit app."""
@@ -159,8 +179,8 @@ def main():
             st.stop()
 
         load_and_preview_data(uploaded_file, input_file_type)
-        mapped_save_type, data_csv_path = save_raw_data(st.session_state.Original_Data, output_file_type)
-        run_data_processing(mapped_save_type, output_file_type, data_csv_path)
+        mapped_save_type, file_path = save_raw_data(st.session_state.ORIGINAL_DATA, output_file_type)
+        run_data_processing(mapped_save_type, output_file_type, file_path)
     else:
         st.info("🔄 **Please upload a file to get started.**")
         st.stop()
@@ -174,67 +194,195 @@ def main():
     with tabs[0]:
         st.header("📊 Binning")
         st.markdown("### 🔢 Select Columns to Bin")
-
-        # Determine columns available for binning (no exclusion)
-        available_columns = st.session_state.Processed_Data.select_dtypes(
+        
+        # Exclude columns selected in Location Granulariser
+        available_columns = list(set(st.session_state.Processed_Data.select_dtypes(
             include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]']
-        ).columns.tolist()
-
-        selected_columns_binning = st.multiselect(
-            'Select columns to bin',
-            options=available_columns,
-            default=st.session_state.Binning_Selected_Columns,
-            key='binning_columns'
-        )
-        st.session_state.Binning_Selected_Columns = selected_columns_binning
-
-        if selected_columns_binning:
-            Data_aligned, binned_df_aligned = perform_binning(
-                st.session_state.Processed_Data,
-                selected_columns_binning,
-                binning_method
+        ).columns.tolist()) - set(st.session_state.Location_Selected_Columns))
+        
+        with st.form("binning_form"):
+            selected_columns_binning = st.multiselect(
+                'Select columns to bin',
+                options=available_columns,
+                default=st.session_state.get('Binning_Selected_Columns', []),
+                key='binning_columns_form'
             )
-            perform_integrity_assessment(Data_aligned, binned_df_aligned, selected_columns_binning)
-            plot_density(
-                Data_aligned[selected_columns_binning].astype('category'),
-                binned_df_aligned[selected_columns_binning],
-                selected_columns_binning
-            )
-            # Update Global_Data
-            st.session_state.Global_Data = st.session_state.Original_Data.copy()
-            for col in selected_columns_binning:
-                st.session_state.Global_Data[col] = binned_df_aligned[col]
+            st.session_state.Binning_Selected_Columns = selected_columns_binning
 
-            st.subheader('📊 Data Preview (Global Data)')
-            st.dataframe(st.session_state.Global_Data.head())
+            if selected_columns_binning:
+                bins = get_binning_configuration(st.session_state.Processed_Data, selected_columns_binning)
+                st.session_state.bins = bins
+            else:
+                st.info("🔄 **Please select at least one column to bin.**")
 
-            download_binned_data()
+            submitted = st.form_submit_button("🔄 Run Binning")
+
+        if submitted:
+            bins = st.session_state.get('bins', None)
+            if not bins:
+                st.error("No binning configuration found. Please configure bins before running binning.")
+            else:
+                overlapping_columns = set(st.session_state.Binning_Selected_Columns) & set(st.session_state.Location_Selected_Columns)
+                if overlapping_columns:
+                    st.error(f"❌ The following columns are selected in both Binning and Location Granulariser tabs: {', '.join(overlapping_columns)}. Please select distinct columns.")
+                else:
+                    try:
+                        OG_Data_BinTab, Data_BinTab = perform_binning(
+                            st.session_state.Processed_Data,
+                            selected_columns_binning,
+                            binning_method,
+                            bins
+                        )
+
+                        perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
+                        plot_density(
+                            OG_Data_BinTab[selected_columns_binning].astype('category'),
+                            Data_BinTab[selected_columns_binning],
+                            selected_columns_binning
+                        )
+                        
+                        # **Updated: Only replace binning columns without resetting GLOBAL_DATA**
+                        for col in selected_columns_binning:
+                            st.session_state.GLOBAL_DATA[col] = Data_BinTab[col]
+
+                        st.success("✅ Binning completed successfully!")
+
+                        st.subheader('📊 Data Preview (Global Data)')
+                        st.dataframe(st.session_state.GLOBAL_DATA.head())
+
+                        download_binned_data()
+                    except Exception as e:
+                        st.error(f"Error during binning: {e}")
         else:
-            st.info("🔄 **Please select at least one column to bin.**")
+            st.info("👉 Select columns and submit the form to run binning.")
 
     ######################
     # Location Granulariser Tab
     ######################
     with tabs[1]:
         st.header("📍 Location Data Geocoding Granulariser")
-        st.markdown("### 🔢 Select Location Column to Granularise ")
-        
-        # Upload and display data
-        data = st.session_state.Original_Data.copy()
-        display_original_data(data)
-        
         # Geocoding process
-        geocoding_section(data)
-        
+        st.header("1️⃣ Geocoding")
+
+
+        OG_Data_GeoTab = st.session_state.ORIGINAL_DATA.copy()
+
+
+        def setup_geocoding_options(OG_Data_GeoTab):
+            geo_columns = detect_geographical_columns(OG_Data_GeoTab)
+
+            selected_columns = st.multiselect(
+                "Select columns to geocode",
+                options=geo_columns,
+                help="Choose the columns containing location data to geocode.",
+                max_selections=1 
+            )
+
+            if not geo_columns:
+                st.warning("No columns detected that likely contain geographical data. Try uploading a different file or renaming location columns.")
+                st.stop()
+
+            st.session_state.Location_Selected_Columns = selected_columns
+
+            OG_Data_GeoTab = OG_Data_GeoTab[geo_columns]
+
+            return selected_columns, OG_Data_GeoTab
+
+        def perform_geocoding_process(selected_columns, OG_Data_GeoTab):
+            """Perform geocoding on the selected columns."""
+            if not selected_columns:
+                st.warning("Please select at least one column to geocode.")
+            else:
+                try:
+                    with st.spinner("Processing..."):
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        geocoded_df = perform_geocoding(
+                            data=OG_Data_GeoTab,
+                            selected_columns=selected_columns,
+                            session_state=st.session_state,
+                            progress_bar=progress_bar,
+                            status_text=status_text
+                        )
+                        st.session_state.geocoded_data = geocoded_df
+                    st.success("✅ Geocoding completed!")
+                except ValueError as ve:
+                    st.warning(str(ve))
+                except Exception as e:
+                    st.error(f"❌ An unexpected error occurred during geocoding: {e}")
+                    st.error(traceback.format_exc())
+                    st.stop()
+
+        location_column_selected, OG_Data_GeoTab = setup_geocoding_options(OG_Data_GeoTab)
+        preprocess_button = st.button("📂 Start Geocoding")
+
+        if preprocess_button:
+            perform_geocoding_process(location_column_selected, OG_Data_GeoTab)
+
         # Display geocoded data
         display_geocoded_data()
-        
         # Granular location generation
-        granular_location_section()
-        
+        st.header("2️⃣ Granular Location Generation")
+
+
+        def perform_granular_location_generation(granularity):
+            """Perform granular location generation."""
+            if st.session_state.geocoded_data is None:
+                st.warning("Please perform geocoding first.")
+            else:
+                column_name = f"Granular Location ({granularity.capitalize()})"
+                try:
+                    with st.spinner("Generating granular location data..."):
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        granular_df = generate_granular_location(
+                            data=st.session_state.geocoded_data,
+                            granularity=granularity,
+                            session_state=st.session_state,
+                            progress_bar=progress_bar,
+                            status_text=status_text,
+                            column=column_name
+                        )
+                    # Add the granular column to GLOBAL_DATA
+                    st.session_state.GLOBAL_DATA[location_column_selected] = granular_df[column_name].astype('category')
+                    st.session_state.Granular_Location_Column_Set = True
+
+                    if column_name not in st.session_state.Location_Selected_Columns:
+                        st.session_state.Location_Selected_Columns.append(column_name)
+                        st.write(f"🔄 **Added '{column_name}' to Location_Selected_Columns list.**")
+                    else:
+                        st.write(f"ℹ️ **'{column_name}' is already in Location_Selected_Columns list. Skipping append.**")
+
+                    # Display unique values for verification
+                    st.write(f"**Unique values in {column_name}:**")
+                    unique_values = st.session_state.GLOBAL_DATA[column_name].unique()
+                    st.write(unique_values)
+                    st.write(f"**Number of Unique Values:** {len(unique_values)}")
+
+                    # Debug: Confirm addition to GLOBAL_DATA
+                    st.write(f"🔍 **GLOBAL_DATA Columns After Adding Granular Location:** {st.session_state.GLOBAL_DATA.columns.tolist()}")
+                except ValueError as ve:
+                    st.warning(str(ve))
+                except Exception as e:
+                    st.error(f"❌ An unexpected error occurred during granular location generation: {e}")
+                    st.error(traceback.format_exc())
+                    st.stop()
+
+        granularity_options = ["address", "suburb", "city", "state", "country", "continent"]
+        granularity = st.selectbox(
+            "Select Location Granularity",
+            options=granularity_options,
+            help="Choose the level of granularity for location identification."
+        )
+
+        generate_granular_button = st.button("📈 Generate Granular Location Column")
+
+        if generate_granular_button:
+            perform_granular_location_generation(granularity)
+
         # Display geocoded data with granular location
         display_geocoded_with_granular_data()
-        
+
         # Map display
         if st.session_state.geocoded_data is not None:
             map_section()
@@ -246,51 +394,80 @@ def main():
         st.header("🔍 Unique Identification Analysis")
         st.markdown("### 🔢 Selected Columns for Analysis")
 
-        if st.session_state.Binning_Selected_Columns is not None and st.session_state.Location_Selected_Columns is not None and st.session_state.Granular_Location_Column_Set:
-            selected_columns = st.session_state.Binning_Selected_Columns + st.session_state.Location_Selected_Columns
-        elif st.session_state.Binning_Selected_Columns is not None:
+        # Determine selected columns based on session state
+        if (
+            st.session_state.Binning_Selected_Columns and
+            st.session_state.Location_Selected_Columns and
+            st.session_state.Granular_Location_Column_Set
+        ):
+            # Combine binning and granular location columns
+            granular_columns = st.session_state.Location_Selected_Columns  # Using explicitly tracked granular columns
+            selected_columns = st.session_state.Binning_Selected_Columns + granular_columns
+        elif st.session_state.Binning_Selected_Columns:
             selected_columns = st.session_state.Binning_Selected_Columns
-        elif st.session_state.Location_Selected_Columns is not None and st.session_state.Granular_Location_Column_Set:
-            selected_columns = st.session_state.Location_Selected_Columns
+        elif st.session_state.Location_Selected_Columns and st.session_state.Granular_Location_Column_Set:
+            granular_columns = st.session_state.Location_Selected_Columns
+            selected_columns = granular_columns
         else:
             selected_columns = None
 
+        # Debug: Display selected_columns
+        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns}")
 
-    #display global data if available
-    if st.session_state.Global_Data is not None:
-        st.subheader('📊 Data Preview (Global Data)')
-        st.dataframe(st.session_state.Global_Data.head())
+        # Debug: Display GLOBAL_DATA columns
+        st.write(f"🔍 **GLOBAL_DATA Columns:** {st.session_state.GLOBAL_DATA.columns.tolist()}")
 
-        # Use only columns selected in Binning tab
+        # Display global data if available
+        if not st.session_state.GLOBAL_DATA.empty:
+            st.subheader('📊 Data Preview (Global Data)')
+            st.dataframe(st.session_state.GLOBAL_DATA.head())
 
-        if not selected_columns:
-            st.warning("⚠️ **No columns selected in Binning tab for analysis.**")
-            st.info("🔄 **Please select columns in the Binning tab to perform Unique Identification Analysis.**")
+            # Use columns present in GLOBAL_DATA
+            if not selected_columns:
+                st.warning("⚠️ **No columns selected in Binning or Location Granulariser tabs for analysis.**")
+                st.info("🔄 **Please select columns in the Binning tab and/or generate granular location data to perform Unique Identification Analysis.**")
+            else:
+                # **Fix: Remove duplicate columns from selected_columns**
+                selected_columns = list(dict.fromkeys(selected_columns))
+                st.write(f"🔍 **Selected Columns for Analysis (After Deduplication):** {selected_columns}")
+
+                # Verify that selected_columns exist in GLOBAL_DATA
+                existing_columns = [col for col in selected_columns if col in st.session_state.GLOBAL_DATA.columns]
+                missing_columns = [col for col in selected_columns if col not in st.session_state.GLOBAL_DATA.columns]
+                if missing_columns:
+                    st.write(f"**Columns selected for analysis that are missing:** {', '.join(missing_columns)}")
+                
+                if missing_columns:
+                    st.error(f"The following selected columns are missing from Global Data: {', '.join(missing_columns)}. Please check your selections.")
+                    st.error(traceback.format_exc())
+                    st.stop()
+
+                st.write(f"**Columns selected for analysis:** {', '.join(existing_columns)}")
+
+                # **Critical Fix: Pass ORIGINAL_DATA as original_for_assessment and GLOBAL_DATA as binned_for_assessment**
+                try:
+                    unique_identification_section(
+                        original_for_assessment=st.session_state.ORIGINAL_DATA[existing_columns].astype('category'),
+                        binned_for_assessment=st.session_state.GLOBAL_DATA[existing_columns].astype('category'),
+                        selected_columns=existing_columns
+                    )
+                except KeyError as ke:
+                    st.error(f"KeyError: {ke}. Please ensure all selected columns exist in both Original and Global Data.")
+                    st.stop()
+                except Exception as e:
+                    st.error(f"Unexpected error: {e}")
+                    st.error(traceback.format_exc())
+                    st.stop()
         else:
-            st.write(f"**Columns selected for analysis:** {', '.join(selected_columns)}")
-
-            # Format selected columns as categorical
-            analysis_df = st.session_state.Global_Data[selected_columns].astype('category')
-
-            unique_identification_section(
-                original_for_assessment=st.session_state.Original_Data[selected_columns].astype('category'),
-                binned_for_assessment=analysis_df,
-                selected_columns=selected_columns
-            )
+            st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
 
 
-######################
+#########################
 # Binning Functions
-######################
+#########################
 
-def perform_binning(processed_data, selected_columns_binning, binning_method):
+def perform_binning(processed_data, selected_columns_binning, binning_method, bins):
     """Perform the binning process on selected columns."""
-    try:
-        bins = get_binning_configuration(processed_data, selected_columns_binning)
-    except Exception as e:
-        st.error(f"Error in binning configuration: {e}")
-        st.stop()
-
     st.markdown("### 🔄 Binning Process")
     try:
         with st.spinner('Binning data...'):
@@ -298,7 +475,7 @@ def perform_binning(processed_data, selected_columns_binning, binning_method):
             binned_df, binned_columns = binner.bin_columns(bins)
 
             # Align both DataFrames (original and binned) to have the same columns
-            Data_aligned, binned_df_aligned = align_dataframes(processed_data, binned_df)
+            OG_Data_BinTab, Data_BinTab = align_dataframes(processed_data, binned_df)
     except Exception as e:
         st.error(f"Error during binning: {e}")
         st.error(traceback.format_exc())
@@ -312,33 +489,36 @@ def perform_binning(processed_data, selected_columns_binning, binning_method):
         if cols:
             st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
 
-    return Data_aligned, binned_df_aligned
+    return OG_Data_BinTab, Data_BinTab
 
-def perform_integrity_assessment(Data_aligned, binned_df_aligned, selected_columns_binning):
+
+
+def perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning):
     """Assess data integrity after binning."""
-    original_for_assessment = Data_aligned[selected_columns_binning].astype('category')
-    binned_for_assessment = binned_df_aligned[selected_columns_binning]
+    original_for_assessment = OG_Data_BinTab[selected_columns_binning].astype('category')
+    binned_for_assessment = Data_BinTab[selected_columns_binning]
 
     handle_integrity_assessment(original_for_assessment, binned_for_assessment, PLOTS_DIR)
+
 
 def plot_density(original_for_assessment, binned_for_assessment, selected_columns_binning):
     """Plot and display density plots."""
     plot_density_plots_and_display(original_for_assessment, binned_for_assessment, selected_columns_binning, PLOTS_DIR)
 
+
 def download_binned_data():
     """Handle downloading of the binned data."""
     handle_download_binned_data(
-        data=st.session_state.Global_Data,
+        data=st.session_state.GLOBAL_DATA,
         file_type_download=st.selectbox('📁 Select Download File Type', ['csv', 'pkl'], index=0, key='download_file_type_download'),
         save_dataframe_func=save_dataframe,
         plots_dir=PLOTS_DIR
     )
 
 
-
-######################
+#########################
 # Unique Identification Functions
-######################
+#########################
 
 def unique_identification_section(original_for_assessment, binned_for_assessment, selected_columns):
     """Handle the Unique Identification Analysis section."""
@@ -379,74 +559,9 @@ def unique_identification_section(original_for_assessment, binned_for_assessment
         display_unique_identification_results(results)
 
 
-######################
+#########################
 # Location Granulariser Functions
-######################
-
-def display_original_data(data):
-    """Display the original uploaded data."""
-    st.subheader("🔍 Original Data")
-    st.dataframe(data)
-
-def geocoding_section(data):
-    """Handle the geocoding process."""
-    st.markdown("---")
-    st.header("1️⃣ Geocoding")
-    
-    with st.expander("⚙️ Geocoding Options", expanded=True):
-        columns_location = detect_geographical_columns(data)
-        
-        # Remove all columns from data that are not in columns
-        data = data[[col for col in data.columns if col in columns_location]]
-        
-        if not columns_location:
-            st.warning("No columns detected that likely contain geographical data. Try uploading a different file or renaming location columns.")
-            st.stop()
-        
-        selected_columns_location = st.multiselect(
-            "Select columns to geocode",
-            options=columns_location,
-            help="Choose the columns containing location data to geocode."
-        )
-
-        st.session_state.Location_Selected_Columns = selected_columns_location
-        
-        # Handle concatenation if exactly two columns are selected
-        if len(selected_columns_location) == 2:
-            combined_column_name = ' '.join(selected_columns_location)
-            if combined_column_name not in data.columns:
-                data[combined_column_name] = data[selected_columns_location[0]].fillna('').astype(str) + ' ' + data[selected_columns_location[1]].fillna('').astype(str)
-            selected_columns_location = [combined_column_name]
-            st.warning(
-                f"⚠️ **Concatenation Alert:** You have selected two columns. "
-                f"The application will concatenate them into a new column '{combined_column_name}' "
-                f"for geocoding purposes instead of processing them individually."
-            )
-        
-        preprocess_button = st.button("📂 Start Geocoding")
-        
-        if preprocess_button:
-            if not selected_columns_location:
-                st.warning("Please select at least one column to geocode.")
-            else:
-                try:
-                    with st.spinner("Processing..."):
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        geocoded_df = perform_geocoding(
-                            data=data,
-                            selected_columns=selected_columns_location,
-                            session_state=st.session_state,
-                            progress_bar=progress_bar,
-                            status_text=status_text
-                        )
-                        st.session_state.geocoded_data = geocoded_df
-                    st.success("✅ Geocoding completed!")
-                except ValueError as ve:
-                    st.warning(str(ve))
-                except Exception as e:
-                    st.error(f"❌ An unexpected error occurred during geocoding: {e}")
-                    st.stop()
+#########################
 
 def display_geocoded_data():
     """Display the geocoded data and provide download options."""
@@ -463,57 +578,18 @@ def display_geocoded_data():
     else:
         st.info("👉 Please perform geocoding first.")
 
-def granular_location_section():
-    """Handle the granular location generation process."""
-    st.markdown("---")
-    st.header("2️⃣ Granular Location Generation")
-    
-    with st.expander("⚙️ Granularization Options", expanded=True):
-        granularity_options = ["address", "suburb", "city", "state", "country", "continent"]
-        granularity = st.selectbox(
-            "Select Location Granularity",
-            options=granularity_options,
-            help="Choose the level of granularity for location identification."
-        )
-        
-        generate_granular_button = st.button("📈 Generate Granular Location Column")
-        
-        if generate_granular_button:
-            if st.session_state.geocoded_data is None:
-                st.warning("Please perform geocoding first.")
-            else:
-                try:
-                    with st.spinner("Generating granular location data..."):
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        granular_df, column_name = generate_granular_location(
-                            data=st.session_state.geocoded_data,
-                            granularity=granularity,
-                            session_state=st.session_state,
-                            progress_bar=progress_bar,
-                            status_text=status_text
-                        )
-                    
-                    st.session_state.geocoded_data = granular_df
-                    st.success(f"✅ Granular location column generated successfully!")
-                    st.session_state.Global_Data[st.session_state.Location_Selected_Columns[0]] = st.session_state.geocoded_data[column_name]
-                    st.session_state.Granular_Location_Column_Set = True
-                except ValueError as ve:
-                    st.warning(str(ve))
-                except Exception as e:
-                    st.error(f"❌ An unexpected error occurred during granular location generation: {e}")
-                    st.stop()
-
 def display_geocoded_with_granular_data():
     """Display geocoded data with granular location and provide download options."""
     if st.session_state.geocoded_data is not None:
-        if any(col.startswith('Granular Location') for col in st.session_state.geocoded_data.columns):
+        # Check if any granular location columns exist in GLOBAL_DATA
+        granular_columns_present = [col for col in st.session_state.Location_Selected_Columns if col in st.session_state.GLOBAL_DATA.columns]
+        if granular_columns_present:
             st.subheader("📝 Geocoded Data with Granular Location")
-            st.dataframe(st.session_state.geocoded_data)
+            st.dataframe(st.session_state.GLOBAL_DATA[granular_columns_present].head())
             
             st.download_button(
                 label="💾 Download Data with Granular Location",
-                data=st.session_state.geocoded_data.to_csv(index=False).encode('utf-8'),
+                data=st.session_state.GLOBAL_DATA[granular_columns_present].to_csv(index=False).encode('utf-8'),
                 file_name="geocoded_data_with_granularity.csv",
                 mime="text/csv"
             )
@@ -536,7 +612,8 @@ def map_section():
         st.info(str(ve))
     except Exception as e:
         st.error(f"❌ An unexpected error occurred while preparing the map: {e}")
-        
+        st.error(traceback.format_exc())
+
 
 if __name__ == "__main__":
     main()

@@ -4,35 +4,14 @@ import streamlit as st
 import pandas as pd
 import tempfile
 import os
-from Binning_Tab.Process_Data import DataProcessor
+from src.data_processing import DataProcessor
 import matplotlib.pyplot as plt
 import traceback
-from Binning_Tab.density_plotter import DensityPlotter
-from Binning_Tab.data_integrity_assessor import DataIntegrityAssessor
-from Binning_Tab.unique_bin_identifier import UniqueBinIdentifier
+from src.binning import DensityPlotter
+from src.binning import DataIntegrityAssessor
+from src.binning import UniqueBinIdentifier
+from src.config import PROCESSED_DATA_DIR, REPORTS_DIR, PLOTS_DIR, UNIQUE_IDENTIFICATIONS_DIR, CAT_MAPPING_DIR, DATA_DIR
 
-# Define the root output directory
-OUTPUT_DIR = "outputs"
-
-# Define subdirectories
-PROCESSED_DATA_DIR = os.path.join(OUTPUT_DIR, "processed_data")
-REPORTS_DIR = os.path.join(OUTPUT_DIR, "reports")
-PLOTS_DIR = os.path.join(OUTPUT_DIR, "plots")
-UNIQUE_IDENTIFICATIONS_DIR = os.path.join(OUTPUT_DIR, "unique_identifications")
-CAT_MAPPING_DIR = os.path.join(OUTPUT_DIR, "category_mappings")
-
-def create_output_directories():
-    """
-    Creates the necessary output directories if they don't exist.
-    """
-    directories = [
-        PROCESSED_DATA_DIR,
-        REPORTS_DIR,
-        PLOTS_DIR,
-        UNIQUE_IDENTIFICATIONS_DIR
-    ]
-    for directory in directories:
-        os.makedirs(directory, exist_ok=True)
 
 def hide_streamlit_style():
     """
@@ -51,15 +30,12 @@ def run_processing(save_type='csv', output_filename='Processed_Data.csv', file_p
     Initializes and runs the data processor, saving outputs to the designated directories.
     """
     try:
-        # Ensure output directories exist
-        create_output_directories()
-        
         # Define output file paths
         output_filepath = os.path.join(PROCESSED_DATA_DIR, output_filename)
         report_path = os.path.join(REPORTS_DIR, 'Type_Conversion_Report.csv')
         
         processor = DataProcessor(
-            input_filepath=file_path,
+            input_filepath=os.path.join(DATA_DIR, file_path),
             output_filepath=output_filepath,
             report_path=report_path,
             return_category_mappings=True,
@@ -150,8 +126,6 @@ def save_dataframe(df, file_type, filename, subdirectory):
     Saves the DataFrame to the specified file type within a subdirectory.
     """
     try:
-        # Ensure output directories exist
-        create_output_directories()
         
         # Determine the full path
         if subdirectory == "processed_data":
@@ -226,6 +200,11 @@ def get_binning_configuration(Data, selected_columns):
                 min_bins = 2 if max_bins >= 2 else 1  # At least 2 bins if possible
                 default_bins = min(10, max_bins) if max_bins >= 2 else 1  # Default to 10 or max_unique if lower
 
+                slider_key = f'bin_slider_{column}'
+
+                # Get previous value from session_state or use default
+                previous_value = st.session_state.get(slider_key, default_bins)
+
                 with cols[col_idx]:
                     if pd.api.types.is_datetime64_any_dtype(Data[column]):
                         default_bins = min(6, max_bins) if max_bins >= 2 else 1
@@ -233,36 +212,30 @@ def get_binning_configuration(Data, selected_columns):
                             f'📏 {column} (Datetime)', 
                             min_value=1, 
                             max_value=max_bins,
-                            value=default_bins,
-                            key=column
+                            value=previous_value,
+                            key=slider_key
                         )
                     elif pd.api.types.is_integer_dtype(Data[column]):
-                        if max_bins > 2:
+                        if max_bins >= 2:
                             bins[column] = st.slider(
                                 f'📏 {column} (Integer)', 
-                                min_value=2, 
+                                min_value=min_bins, 
                                 max_value=max_bins, 
-                                value=default_bins,
-                                key=column
+                                value=previous_value,
+                                key=slider_key
                             )
-                        elif max_bins == 2:
-                            st.write(f'📏 **{column} (Integer):** 2 (Fixed)')
-                            bins[column] = 2
                         else:
                             st.write(f'📏 **{column} (Integer):** {max_bins} (Fixed)')
                             bins[column] = max_bins
                     elif pd.api.types.is_float_dtype(Data[column]):
-                        if max_bins > 2:
+                        if max_bins >= 2:
                             bins[column] = st.slider(
                                 f'📏 {column} (Float)', 
-                                min_value=2, 
+                                min_value=min_bins, 
                                 max_value=max_bins, 
-                                value=default_bins,
-                                key=column
+                                value=previous_value,
+                                key=slider_key
                             )
-                        elif max_bins == 2:
-                            st.write(f'📏 **{column} (Float):** 2 (Fixed)')
-                            bins[column] = 2
                         else:
                             st.write(f'📏 **{column} (Float):** {max_bins} (Fixed)')
                             bins[column] = max_bins
@@ -272,8 +245,8 @@ def get_binning_configuration(Data, selected_columns):
                                 f'📏 {column}', 
                                 min_value=1, 
                                 max_value=max_bins, 
-                                value=default_bins,
-                                key=column
+                                value=previous_value,
+                                key=slider_key
                             )
                         elif max_bins == 1:
                             st.write(f'📏 **{column}:** 1 (Fixed)')
@@ -285,6 +258,7 @@ def get_binning_configuration(Data, selected_columns):
                 current_col += 1
 
     return bins
+
 
 def plot_entropy_and_display(assessor, plots_dir):
     """
