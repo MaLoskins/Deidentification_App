@@ -20,7 +20,7 @@ class DtypeDetector:
         log_level: str = 'INFO',
         log_file: Optional[str] = None,
         convert_factors_to_int: bool = True,
-        date_format: Optional[str] = None  # **New Parameter**
+        date_format: Optional[str] = None  
     ):
         """
         Initialize the DtypeDetector with configurable thresholds and logging.
@@ -39,7 +39,7 @@ class DtypeDetector:
                 If specified, date columns will be formatted as strings in this format.
         """
         self.convert_factors_to_int = convert_factors_to_int
-        self.date_format = date_format  # **Store the New Parameter**
+        self.date_format = date_format 
         self.thresholds = {
             'date_threshold': date_threshold,
             'numeric_threshold': numeric_threshold,
@@ -211,6 +211,7 @@ class DtypeDetector:
     def process_dataframe(
         self,
         filepath: str,
+        file_type: str = 'csv',
         use_parallel: bool = True,
         report_path: str = 'Type_Conversion_Report.csv'
     ) -> pd.DataFrame:
@@ -225,10 +226,17 @@ class DtypeDetector:
         Returns:
             pd.DataFrame: The processed DataFrame.
         """
+
         try:
-            data = pd.read_csv(filepath, sep=',')  # Assuming comma deliminated values
-            data = self.clean_column_names(data)
-            self.logger.info(f"Successfully read file: {filepath}")
+            if file_type == 'csv':
+                data = pd.read_csv(filepath, sep=',')  # Assuming comma deliminated values
+                data = self.clean_column_names(data)
+                self.logger.info(f"Successfully read file: {filepath}")
+            elif file_type == 'pickle':
+                data = pd.read_pickle(filepath)
+                data = self.clean_column_names(data)
+                self.logger.info(f"Successfully read file: {filepath}")
+
         except FileNotFoundError:
             self.logger.error(f"File not found: {filepath}")
             raise

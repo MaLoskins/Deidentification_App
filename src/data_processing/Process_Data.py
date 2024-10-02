@@ -24,8 +24,8 @@ class DataProcessor:
         log_level: str = 'INFO',
         log_file: Optional[str] = None,
         convert_factors_to_int: bool = True,
-        date_format: Optional[str] = '%d-%m-%Y',  # **New Parameter**
-        save_type: str = 'csv' # **New Parameter**
+        date_format: Optional[str] = '%d-%m-%Y',  
+        save_type: str = 'csv' 
     ):
         """
         Initialize the DataProcessor with file paths and configuration parameters.
@@ -81,6 +81,7 @@ class DataProcessor:
             try:
                 processed_data = self.detector.process_dataframe(
                     filepath=self.input_filepath,
+                    file_type = self.save_type,
                     use_parallel=False,
                     report_path=self.report_path
                 )

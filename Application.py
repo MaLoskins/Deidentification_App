@@ -88,6 +88,10 @@ def initialize_session_state():
     for key, value in default_session_state.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    
+    # Initialize the session_state_logs if not present
+    if 'session_state_logs' not in st.session_state:
+        st.session_state['session_state_logs'] = []
 
 def update_session_state(key: str, value):
     """
@@ -98,7 +102,8 @@ def update_session_state(key: str, value):
         value: The value to set for the session state variable.
     """
     st.session_state[key] = value
-    st.write(f"🔄 **Session State Updated:** `{key}` has been set/updated.")
+    log_message = f"🔄 **Session State Updated:** `{key}` has been set/updated."
+    st.session_state['session_state_logs'].append(log_message)
 
 # =====================================
 # Page Configuration and Sidebar
@@ -139,7 +144,35 @@ def sidebar_inputs():
             This application allows you to upload a dataset, process and bin numerical and datetime columns, 
             assess data integrity post-binning, visualize data distributions, and perform unique identification analysis.
         """)
-
+        
+        # ============================
+        # Special Section: Session State Info
+        # ============================
+        with st.expander("🔍 Session State Info"):
+            st.markdown("### 📝 Session State Update Logs")
+            if st.session_state['session_state_logs']:
+                for log in st.session_state['session_state_logs']:
+                    st.markdown(log)
+            else:
+                st.write("No session state updates yet.")
+            
+            st.markdown("### 📊 Session State Variable Types")
+            session_info = []
+            for key, value in st.session_state.items():
+                var_type = type(value).__name__
+                dtypes = ""
+                if isinstance(value, pd.DataFrame):
+                    dtypes = ', '.join([f"{col}: {dtype}" for col, dtype in value.dtypes.items()])
+                elif isinstance(value, pd.Series):
+                    dtypes = f"{value.name}: {value.dtype}"
+                session_info.append({
+                    "Key": key,
+                    "Type": var_type,
+                    "Dtypes": dtypes if dtypes else "-"
+                })
+            df_session_info = pd.DataFrame(session_info)
+            st.dataframe(df_session_info)
+        
     return uploaded_file, output_file_type, binning_method
 
 # =====================================
@@ -256,6 +289,7 @@ def download_binned_data(data_full, data):
             ),
             save_dataframe_func=save_dataframe
         )
+
 
 def binning_tab():
     """Render the Binning Tab in the Streamlit app."""

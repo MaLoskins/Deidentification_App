@@ -364,8 +364,7 @@ def generate_granular_location(data: pd.DataFrame, granularity: str, session_sta
     
     # Create a DataFrame from the granular data
     granular_data = pd.DataFrame(granular_data)
-    #write to csv
-    granular_data.to_csv('granular_data.csv', index=False)
+
     # if combination of lat and lon for granular data is in data, then replace the respective "column" with the value
     for idx, row in granular_data.iterrows():
         data.loc[(data[lat_col] == row[lat_col]) & (data[lon_col] == row[lon_col]), column] = row[column]
