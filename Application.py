@@ -294,7 +294,6 @@ def download_binned_data(data_full, data):
 def binning_tab():
     """Render the Binning Tab in the Streamlit app."""
     st.header("📊 Binning")
-    st.markdown("### 🔢 Select Columns to Bin")
     
     processed_data = st.session_state.Processed_Data
     location_selected = set(st.session_state.Location_Selected_Columns)

@@ -124,8 +124,7 @@ class DataBinner:
             # This should not happen due to validation in __init__
             raise ValueError(f"Unsupported binning method '{method}'.")
 
-        # If labels=False, bins start at 0. To start at 1, add 1 and convert to categorical
-        return (binned + 1).astype('category')
+        return (binned).astype('category')
 
     def get_binned_data(self) -> pd.DataFrame:
         """
