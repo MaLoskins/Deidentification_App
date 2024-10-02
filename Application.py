@@ -305,75 +305,61 @@ def binning_tab():
         ).columns) - location_selected
     )
     
-    with st.form("binning_form"):
-        # Multiselect widget for selecting columns to bin
-        selected_columns_binning = st.multiselect(
-            'Select columns to bin',
-            options=available_columns,
-            default=st.session_state.Binning_Selected_Columns,
-            key='binning_columns_form'
-        )
-        update_session_state('Binning_Selected_Columns', selected_columns_binning)
+    # Multiselect widget for selecting columns to bin
+    selected_columns_binning = st.multiselect(
+        'Select columns to bin',
+        options=available_columns,
+        default=st.session_state.Binning_Selected_Columns,
+        key='binning_columns_form'
+    )
+    update_session_state('Binning_Selected_Columns', selected_columns_binning)
 
-        # Configure bins if columns are selected
-        if selected_columns_binning:
-            bins = get_binning_configuration(processed_data, selected_columns_binning)
-            update_session_state('Binning_Configuration', bins)
-        else:
-            st.info("🔄 **Please select at least one column to bin.**")
-
-        # Submit button for the form
-        submitted = st.form_submit_button("🔄 Run Binning")
-
-    if submitted:
-        bins = st.session_state.get('Binning_Configuration')
-        
-        if not bins:
-            st.error("No binning configuration found. Please configure bins before running binning.")
-        else:
-            # Check for overlapping columns between Binning and Location Granulariser
-            overlapping = set(st.session_state.Binning_Selected_Columns) & location_selected
-            if overlapping:
-                st.error(
-                    f"❌ The following columns are selected in both Binning and Location Granulariser tabs: "
-                    f"{', '.join(overlapping)}. Please select distinct columns."
-                )
-            else:
-                try:
-                    # Perform binning operation
-                    OG_Data_BinTab, Data_BinTab = perform_binning(
-                        processed_data,
-                        selected_columns_binning,
-                        st.session_state.Binning_Method,
-                        bins
-                    )
-
-                    # Assess data integrity post-binning
-                    perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
-                    
-                    # Plot density distributions for binned data
-                    plot_density_plots_and_display(
-                        OG_Data_BinTab[selected_columns_binning].astype('category'), 
-                        Data_BinTab[selected_columns_binning], 
-                        selected_columns_binning, 
-                        PLOTS_DIR
-                    )
-                    
-                    # Update GLOBAL_DATA with the binned columns
-                    st.session_state.GLOBAL_DATA[selected_columns_binning] = Data_BinTab[selected_columns_binning]
-                    update_session_state('GLOBAL_DATA', st.session_state.GLOBAL_DATA)
-
-                    # Mark binning as completed
-                    update_session_state('is_binning_done', True)
-                    st.success("✅ Binning completed successfully!")
-
-                    # Provide option to download the binned data
-                    download_binned_data(Data_BinTab, Data_BinTab[selected_columns_binning])
-
-                except Exception as e:
-                    st.error(f"Error during binning: {e}")
+    # Configure bins if columns are selected
+    if selected_columns_binning:
+        bins = get_binning_configuration(processed_data, selected_columns_binning)
+        update_session_state('Binning_Configuration', bins)
     else:
-        st.info("👉 Select columns and submit the form to run binning.")
+        st.info("🔄 **Please select at least one column to bin.**")
+
+    # Proceed to binning if bins are configured
+    bins = st.session_state.get('Binning_Configuration')
+    
+    if bins and selected_columns_binning:
+        try:
+            # Perform binning operation
+            OG_Data_BinTab, Data_BinTab = perform_binning(
+                processed_data,
+                selected_columns_binning,
+                st.session_state.Binning_Method,
+                bins
+            )
+
+            # Assess data integrity post-binning
+            perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
+            
+            # Plot density distributions for binned data
+            plot_density_plots_and_display(
+                OG_Data_BinTab[selected_columns_binning].astype('category'), 
+                Data_BinTab[selected_columns_binning], 
+                selected_columns_binning, 
+                PLOTS_DIR
+            )
+            
+            # Update GLOBAL_DATA with the binned columns
+            st.session_state.GLOBAL_DATA[selected_columns_binning] = Data_BinTab[selected_columns_binning]
+            update_session_state('GLOBAL_DATA', st.session_state.GLOBAL_DATA)
+
+            # Mark binning as completed
+            update_session_state('is_binning_done', True)
+            st.success("✅ Binning completed successfully!")
+
+            # Provide option to download the binned data
+            download_binned_data(Data_BinTab, Data_BinTab[selected_columns_binning])
+
+        except Exception as e:
+            st.error(f"Error during binning: {e}")
+    elif selected_columns_binning:
+        st.info("👉 Adjust the bins using the sliders above to run binning.")
 
 # =====================================
 # Location Granulariser Tab Functionality
