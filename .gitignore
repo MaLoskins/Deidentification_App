@@ -1,5 +1,8 @@
 # Ignore the data folder
-Data/
+data/
+
+#ignore logs folder
+logs/
 
 # Ignore the virtual environment folder
 .venv/

@@ -12,21 +12,20 @@ from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 import spacy
 import logging
+import subprocess
+import sys
 import sqlite3
 import time
 import pycountry_convert as pc  # Added for continent mapping
 from src.config import LOGS_DIR, GEOCACHE_DB
 
 # Initialize logging
-logging.basicConfig(level=logging.INFO, filename= os.path.join(LOGS_DIR, 'app.log'),
-                    format='%(asctime)s %(levelname)s:%(message)s')
+logging.basicConfig(level=logging.INFO, filename=os.path.join(LOGS_DIR, 'app.log'), format='%(asctime)s %(levelname)s:%(message)s')
 
 # Initialize spaCy
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
-    import subprocess
-    import sys
     subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
     nlp = spacy.load("en_core_web_sm")
 
@@ -35,7 +34,6 @@ GEOCODER_USER_AGENT = os.getenv('GEOCODER_USER_AGENT', 'location_data_geocoding_
 geolocator = Nominatim(user_agent=GEOCODER_USER_AGENT, timeout=10)
 
 # Initialize or connect to the SQLite database for caching
-
 conn = sqlite3.connect(GEOCACHE_DB, check_same_thread=False)
 cursor = conn.cursor()
 
@@ -62,20 +60,21 @@ CREATE TABLE IF NOT EXISTS reverse_geocache (
 conn.commit()
 
 
+######################################################################
+
+
+
 def detect_geographical_columns(df: pd.DataFrame) -> list:
     """Detect columns that likely contain geographical data based on keywords."""
     # Keywords that indicate geographical information
     geo_keywords = ['city', 'country', 'suburb', 'region', 'state', 'province', 'address', 'location', 'place', 'geo', 'zipcode', 'postal', 'district', 'town', 'name']
-
     # List to store the names of columns that likely contain geographical data
     geo_columns = []
-
     # Loop through columns in the DataFrame
     for col in df.columns:
         # Skip numerical columns
         if pd.api.types.is_numeric_dtype(df[col]):
             continue
-
         # Check if any keyword appears in the column name (case insensitive)
         for keyword in geo_keywords:
             if keyword.lower() in col.lower():
@@ -83,6 +82,8 @@ def detect_geographical_columns(df: pd.DataFrame) -> list:
                 break
 
     return geo_columns
+
+#####################################################################
 
 
 def extract_gpe_entities(text):
@@ -93,6 +94,8 @@ def extract_gpe_entities(text):
     except Exception as e:
         logging.error(f"Error extracting GPE entities from text '{text}': {e}")
         return []
+
+#####################################################################
 
 
 def geocode_location(location):
@@ -115,6 +118,7 @@ def geocode_location(location):
         logging.error(f"Error geocoding location '{location}': {e}")
         return {'latitude': None, 'longitude': None}
 
+#####################################################################
 
 def geocode_location_with_cache(location):
     """Geocode a location with caching using SQLite."""
@@ -145,6 +149,93 @@ def geocode_location_with_cache(location):
         logging.error(f"Error accessing cache for location '{location}': {e}")
         return {'latitude': None, 'longitude': None}
 
+
+
+def perform_geocoding(data: pd.DataFrame, selected_geo_columns: list, session_state, progress_bar, status_text) -> pd.DataFrame:
+
+    """
+    Perform geocoding on the selected columns of the DataFrame.
+
+    Args:
+        data (pd.DataFrame): The input DataFrame.
+        selected_geo_columns (list): Columns selected for geocoding.
+        session_state: Streamlit session state.
+        progress_bar: Streamlit progress bar object.
+        status_text: Streamlit status text object.
+
+    Returns:
+        pd.DataFrame: DataFrame with added latitude and longitude columns.
+    """
+    geocoded_df = data.copy()
+    # Collect all unique locations across selected columns
+    unique_locations = set()
+    for column in selected_geo_columns:
+        unique_locations.update(geocoded_df[column].dropna().unique())
+
+    unique_locations = list(unique_locations)
+    total_locations = len(unique_locations)
+
+    if total_locations == 0:
+        raise ValueError("No locations found in the selected columns.")
+
+    # Clear previous geocoded data
+    session_state.geocoded_dict = {}
+
+    for idx, loc in enumerate(unique_locations):
+        geocoded = interpret_location(loc)
+        session_state.geocoded_dict[loc] = geocoded
+
+        # Update progress bar
+        progress = (idx + 1) / total_locations
+        progress = min(progress, 1.0)
+        progress_bar.progress(progress)
+        status_text.text(f"Geocoding {idx + 1}/{total_locations} locations...")
+
+        # Respect Nominatim's rate limit: 1 request per second
+        time.sleep(1)
+
+    # Apply geocoded results to the dataframe
+    for column in selected_geo_columns:
+        # Add Latitude and Longitude
+        geocoded_df[f'Latitude from {column}'] = geocoded_df[column].apply(
+            lambda x: session_state.geocoded_dict.get(x, {}).get('latitude', None) if pd.notnull(x) else None
+        )
+        geocoded_df[f'Longitude from {column}'] = geocoded_df[column].apply(
+            lambda x: session_state.geocoded_dict.get(x, {}).get('longitude', None) if pd.notnull(x) else None
+        )
+
+    return geocoded_df
+
+#####################################################################
+
+def interpret_location(text):
+    """Interpret location using NER and geocoding with cache."""
+    try:
+        gpe_entities = extract_gpe_entities(text)
+        if gpe_entities:
+            # Assume the first GPE entity is the relevant location
+            location_query = f"{gpe_entities[0]}"
+            geocoded = geocode_location_with_cache(location_query)
+        else:
+            # Fallback to full text geocoding
+            location_query = f"{text}"
+            geocoded = geocode_location_with_cache(location_query)
+
+        return geocoded  # Return the entire geocoded dict
+    except Exception as e:
+        logging.error(f"Error interpreting location '{text}': {e}")
+        return {'latitude': None, 'longitude': None}
+
+
+def close_cache_connection():
+    """Close the SQLite cache connection."""
+    try:
+        conn.close()
+        logging.info("Cache connection closed.")
+    except Exception as e:
+        logging.error(f"Error closing cache connection: {e}")
+
+#####################################################################
 
 def reverse_geocode_with_cache(lat, lon, granularity):
     """Reverse geocode latitude and longitude with caching."""
@@ -212,90 +303,8 @@ def reverse_geocode_with_cache(lat, lon, granularity):
     except Exception as e:
         logging.error(f"Error accessing reverse geocode cache for ({lat}, {lon}) at granularity '{granularity}': {e}")
         return 'Missing'
-
-
-def interpret_location(text):
-    """Interpret location using NER and geocoding with cache."""
-    try:
-        gpe_entities = extract_gpe_entities(text)
-        if gpe_entities:
-            # Assume the first GPE entity is the relevant location
-            location_query = f"{gpe_entities[0]}"
-            geocoded = geocode_location_with_cache(location_query)
-        else:
-            # Fallback to full text geocoding
-            location_query = f"{text}"
-            geocoded = geocode_location_with_cache(location_query)
-
-        return geocoded  # Return the entire geocoded dict
-    except Exception as e:
-        logging.error(f"Error interpreting location '{text}': {e}")
-        return {'latitude': None, 'longitude': None}
-
-
-def close_cache_connection():
-    """Close the SQLite cache connection."""
-    try:
-        conn.close()
-        logging.info("Cache connection closed.")
-    except Exception as e:
-        logging.error(f"Error closing cache connection: {e}")
-
-
-def perform_geocoding(data: pd.DataFrame, selected_columns: list, session_state, progress_bar, status_text) -> pd.DataFrame:
-    """
-    Perform geocoding on the selected columns of the DataFrame.
-
-    Args:
-        data (pd.DataFrame): The input DataFrame.
-        selected_columns (list): Columns selected for geocoding.
-        session_state: Streamlit session state.
-        progress_bar: Streamlit progress bar object.
-        status_text: Streamlit status text object.
-
-    Returns:
-        pd.DataFrame: DataFrame with added latitude and longitude columns.
-    """
-    geocoded_df = data.copy()
-    # Collect all unique locations across selected columns
-    unique_locations = set()
-    for column in selected_columns:
-        unique_locations.update(geocoded_df[column].dropna().unique())
-
-    unique_locations = list(unique_locations)
-    total_locations = len(unique_locations)
-
-    if total_locations == 0:
-        raise ValueError("No locations found in the selected columns.")
-
-    # Clear previous geocoded data
-    session_state.geocoded_dict = {}
-
-    for idx, loc in enumerate(unique_locations):
-        geocoded = interpret_location(loc)
-        session_state.geocoded_dict[loc] = geocoded
-
-        # Update progress bar
-        progress = (idx + 1) / total_locations
-        progress = min(progress, 1.0)
-        progress_bar.progress(progress)
-        status_text.text(f"Geocoding {idx + 1}/{total_locations} locations...")
-
-        # Respect Nominatim's rate limit: 1 request per second
-        time.sleep(1)
-
-    # Apply geocoded results to the dataframe
-    for column in selected_columns:
-        # Add Latitude and Longitude
-        geocoded_df[f'Latitude from {column}'] = geocoded_df[column].apply(
-            lambda x: session_state.geocoded_dict.get(x, {}).get('latitude', None) if pd.notnull(x) else None
-        )
-        geocoded_df[f'Longitude from {column}'] = geocoded_df[column].apply(
-            lambda x: session_state.geocoded_dict.get(x, {}).get('longitude', None) if pd.notnull(x) else None
-        )
-
-    return geocoded_df
-
+    
+#####################################################################
 
 def generate_granular_location(data: pd.DataFrame, granularity: str, session_state, progress_bar, status_text, column) -> pd.DataFrame:
     """
@@ -312,7 +321,9 @@ def generate_granular_location(data: pd.DataFrame, granularity: str, session_sta
     Returns:
         pd.DataFrame: DataFrame with the new granular location column added.
     """
-    granular_column_name = column
+    
+    # Convert the column to string to avoid issues with categorical dtype
+    data[column] = data[column].astype(str)
 
     # Identify latitude and longitude columns
     lat_cols = [col for col in data.columns if col.startswith('Latitude from')]
@@ -340,11 +351,7 @@ def generate_granular_location(data: pd.DataFrame, granularity: str, session_sta
         value = reverse_geocode_with_cache(lat, lon, granularity)
         if not value:
             value = "Missing"  # Fill missing values
-        granular_data.append({
-            'lat': lat,
-            'lon': lon,
-            'granular_value': value
-        })
+        granular_data.append({lat_col: lat, lon_col: lon, column: value})
 
         # Update progress
         progress = (count + 1) / total_unique
@@ -354,31 +361,21 @@ def generate_granular_location(data: pd.DataFrame, granularity: str, session_sta
 
         # Respect Nominatim's rate limit: 1 request per second
         time.sleep(1)
+    
+    # Create a DataFrame from the granular data
+    granular_data = pd.DataFrame(granular_data)
+    #write to csv
+    granular_data.to_csv('granular_data.csv', index=False)
+    # if combination of lat and lon for granular data is in data, then replace the respective "column" with the value
+    for idx, row in granular_data.iterrows():
+        data.loc[(data[lat_col] == row[lat_col]) & (data[lon_col] == row[lon_col]), column] = row[column]
 
-    # Create DataFrame from granular_data
-    granular_df = pd.DataFrame(granular_data)
+    #turn the column into a category
+    data[column] = data[column].astype('category')
 
-    # Replace any remaining NaNs or None with 'Missing'
-    granular_df['granular_value'] = granular_df['granular_value'].fillna('Missing')
+    return data
 
-    # Create DataFrame to merge
-    granular_df = granular_df.rename(columns={
-        'lat': lat_col,
-        'lon': lon_col,
-        'granular_value': granular_column_name
-    })
-
-    merged_df = data.merge(
-        granular_df,
-        on=[lat_col, lon_col],
-        how='left'
-    )
-
-    # Fill any remaining NaNs in the granular column
-    merged_df[granular_column_name] = merged_df[granular_column_name].fillna('Missing')
-
-    return merged_df
-
+#####################################################################
 
 def prepare_map_data(data: pd.DataFrame) -> pd.DataFrame:
     """

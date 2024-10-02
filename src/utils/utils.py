@@ -168,95 +168,26 @@ def load_dataframe(file_path, file_type):
         st.error(f"Error loading DataFrame: {e}")
         st.stop()
 
-def get_binning_configuration(Data, selected_columns):
+def get_binning_configuration(Data, selected_columns_binning):
     """
     Generates binning configuration sliders for selected columns.
-
-    Args:
-        Data (pd.DataFrame): The DataFrame containing the data.
-        selected_columns (list): List of columns selected for binning.
-
-    Returns:
-        dict: A dictionary with column names as keys and number of bins as values.
     """
     bins = {}
     st.markdown("### 📏 Binning Configuration")
 
-    # Define layout parameters
-    cols_per_row = 2  # Number of sliders per row
-    num_cols = len(selected_columns)
-    rows = num_cols // cols_per_row + (num_cols % cols_per_row > 0)
+    for column in selected_columns_binning:
+        max_bins = Data[column].nunique()
+        min_bins = 2 if max_bins >= 2 else 1  # At least 2 bins if possible
+        default_bins = min(10, max_bins) if max_bins >= 2 else 1  # Default to 10 or max_unique if lower
 
-    current_col = 0
-
-    for row in range(rows):
-        # Create a new row of columns
-        cols = st.columns(cols_per_row)
-        
-        for col_idx in range(cols_per_row):
-            if current_col < num_cols:
-                column = selected_columns[current_col]
-                max_bins = Data[column].nunique()
-                min_bins = 2 if max_bins >= 2 else 1  # At least 2 bins if possible
-                default_bins = min(10, max_bins) if max_bins >= 2 else 1  # Default to 10 or max_unique if lower
-
-                slider_key = f'bin_slider_{column}'
-
-                # Get previous value from session_state or use default
-                previous_value = st.session_state.get(slider_key, default_bins)
-
-                with cols[col_idx]:
-                    if pd.api.types.is_datetime64_any_dtype(Data[column]):
-                        default_bins = min(6, max_bins) if max_bins >= 2 else 1
-                        bins[column] = st.slider(
-                            f'📏 {column} (Datetime)', 
-                            min_value=1, 
-                            max_value=max_bins,
-                            value=previous_value,
-                            key=slider_key
-                        )
-                    elif pd.api.types.is_integer_dtype(Data[column]):
-                        if max_bins >= 2:
-                            bins[column] = st.slider(
-                                f'📏 {column} (Integer)', 
-                                min_value=min_bins, 
-                                max_value=max_bins, 
-                                value=previous_value,
-                                key=slider_key
-                            )
-                        else:
-                            st.write(f'📏 **{column} (Integer):** {max_bins} (Fixed)')
-                            bins[column] = max_bins
-                    elif pd.api.types.is_float_dtype(Data[column]):
-                        if max_bins >= 2:
-                            bins[column] = st.slider(
-                                f'📏 {column} (Float)', 
-                                min_value=min_bins, 
-                                max_value=max_bins, 
-                                value=previous_value,
-                                key=slider_key
-                            )
-                        else:
-                            st.write(f'📏 **{column} (Float):** {max_bins} (Fixed)')
-                            bins[column] = max_bins
-                    else:
-                        if max_bins > 1:
-                            bins[column] = st.slider(
-                                f'📏 {column}', 
-                                min_value=1, 
-                                max_value=max_bins, 
-                                value=previous_value,
-                                key=slider_key
-                            )
-                        elif max_bins == 1:
-                            st.write(f'📏 **{column}:** 1 (Fixed)')
-                            bins[column] = 1
-                        else:
-                            st.write(f'📏 **{column}:** {max_bins} (Fixed)')
-                            bins[column] = max_bins
-
-                current_col += 1
-
+        bins[column] = st.slider(
+            f'📏 {column}', 
+            min_value=1, 
+            max_value=max_bins, 
+            value=default_bins, 
+            key=f'bin_slider_{column}'
+        )
+    
     return bins
 
 
@@ -281,25 +212,25 @@ def plot_entropy_and_display(assessor, plots_dir):
         st.error(f"Error plotting entropy: {e}")
         st.error(traceback.format_exc())  # Detailed error log
 
-def plot_density_plots_and_display(original_df, binned_df, selected_columns, plots_dir):
+def plot_density_plots_and_display(original_df, binned_df, selected_columns_binning, plots_dir):
     """
     Plots the density plots for original and binned data and displays them in Streamlit.
 
     Args:
         original_df (pd.DataFrame): Original DataFrame for assessment.
         binned_df (pd.DataFrame): Binned DataFrame for assessment.
-        selected_columns (list): Columns selected for binning.
+        selected_columns_binning (list): Columns selected for binning.
         plots_dir (str): Directory to save the density plots.
     """
     st.markdown("### 📈 Density Plots")
-    if len(selected_columns) > 1:
+    if len(selected_columns_binning) > 1:
         density_tab1, density_tab2 = st.tabs(["Original Data", "Binned Data"])
         
         with density_tab1:
             try:
                 plotter_orig = DensityPlotter(
                     dataframe=original_df,  # Use original categorical data
-                    category_columns=selected_columns,
+                    category_columns=selected_columns_binning,
                     figsize=(15, 4),                     
                     save_path=None,  # We'll handle saving manually
                     plot_style='ticks'
@@ -320,7 +251,7 @@ def plot_density_plots_and_display(original_df, binned_df, selected_columns, plo
             try:
                 plotter_binned = DensityPlotter(
                     dataframe=binned_df,  # Use user-specified binned data
-                    category_columns=selected_columns,
+                    category_columns=selected_columns_binning,
                     figsize=(15, 4),                     
                     save_path=None,  # We'll handle saving manually
                     plot_style='ticks'
@@ -339,7 +270,7 @@ def plot_density_plots_and_display(original_df, binned_df, selected_columns, plo
         # Print a message if only one column is selected
         st.info("🔄 **Please select more than one column to display density plots.**")
 
-def handle_download_binned_data(data, file_type_download, save_dataframe_func, plots_dir):
+def handle_download_binned_data(data, file_type_download='csv', save_dataframe_func=save_dataframe):
     """
     Handles the download functionality for binned data.
 
@@ -349,6 +280,7 @@ def handle_download_binned_data(data, file_type_download, save_dataframe_func, p
         save_dataframe_func (callable): Function to save the DataFrame.
         plots_dir (str): Directory to save any related plots if necessary.
     """
+
     st.markdown("### 💾 Download Binned Data")
     try:
         if file_type_download == 'csv':
@@ -389,7 +321,7 @@ def handle_integrity_assessment(original_df, binned_df, plots_dir):
     Returns:
         None
     """
-    st.markdown("### 📄 Integrity Loss Report")
+
     try:
         assessor = DataIntegrityAssessor(original_df=original_df, binned_df=binned_df)
         assessor.assess_integrity_loss()
@@ -397,20 +329,25 @@ def handle_integrity_assessment(original_df, binned_df, plots_dir):
         
         # Save the report to the 'reports' directory
         report_filename = 'Integrity_Loss_Report.csv'
-        report_path = save_dataframe(report, 'csv', report_filename, 'reports')
-        
-        st.dataframe(report)
+        save_dataframe(report, 'csv', report_filename, 'reports')
         
         overall_loss = assessor.get_overall_loss()
+
+        st.markdown("### 📄 Integrity Loss Report")
+        st.dataframe(report)
         st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
-        
+
         # Plot and display entropy using utility function
         plot_entropy_and_display(assessor, plots_dir)
+
+
     except Exception as e:
         st.error(f"Error during integrity assessment: {e}")
         st.error(traceback.format_exc())  # Detailed error log
+    
+    
 
-def handle_unique_identification_analysis(original_df, binned_df, bin_columns_list, min_comb_size, max_comb_size):
+def handle_unique_identification_analysis(original_df, binned_df, columns_list, min_comb_size, max_comb_size):
     """
     Handles the unique identification analysis process, including progress updates, result display, and downloads.
 
@@ -426,11 +363,8 @@ def handle_unique_identification_analysis(original_df, binned_df, bin_columns_li
     """
     try:
         with st.spinner('🔍 Analyzing unique identifications... This may take a while for large datasets.'):
+            
             progress_bar = st.progress(0)
-            # Calculate total combinations for progress tracking
-            from math import comb
-            total_combinations = sum(comb(len(bin_columns_list), r) for r in range(min_comb_size, max_comb_size + 1))
-
             def update_progress(combination_counter, total_combinations):
                 progress = combination_counter / total_combinations
                 st.session_state.progress = min(progress, 1.0)
@@ -442,7 +376,7 @@ def handle_unique_identification_analysis(original_df, binned_df, bin_columns_li
             results = identifier.find_unique_identifications(
                 min_comb_size=min_comb_size, 
                 max_comb_size=max_comb_size, 
-                columns=bin_columns_list,
+                columns=columns_list,
                 progress_callback=update_progress
             )
             progress_bar.empty()
