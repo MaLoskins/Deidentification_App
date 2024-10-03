@@ -1,0 +1,2758 @@
+"Application.py"
+
+```
+# application.py
+
+import os
+import traceback
+import pandas as pd
+import streamlit as st
+
+# Import binning modules
+from src.binning import DataBinner
+
+# Import utility functions
+from src.utils import (
+    hide_streamlit_style,
+    load_data,
+    align_dataframes,
+    save_dataframe,
+    run_processing,
+    get_binning_configuration,
+    plot_entropy_and_display,
+    plot_density_plots_and_display,
+    handle_download_binned_data,
+    handle_integrity_assessment,
+    handle_unique_identification_analysis,
+    display_unique_identification_results
+)
+
+# Import path configurations
+from src.config import (
+    PLOTS_DIR,
+    PROCESSED_DATA_DIR,
+    REPORTS_DIR,
+    UNIQUE_IDENTIFICATIONS_DIR,
+    CAT_MAPPING_DIR,
+    DATA_DIR,
+    LOGS_DIR
+)
+
+# Import location granularizer functions
+from src.location_granularizer import (
+    extract_gpe_entities,
+    interpret_location,
+    geocode_location_with_cache,
+    detect_geographical_columns,
+    reverse_geocode_with_cache,
+    perform_geocoding,
+    generate_granular_location,
+    prepare_map_data
+)
+
+# =====================================
+# Helper Functions for Session State
+# =====================================
+
+def initialize_session_state():
+    """Initialize all necessary session state variables."""
+    default_session_state = {
+        # Original and Processed Data
+        'ORIGINAL_DATA': pd.DataFrame(),
+        'Processed_Data': pd.DataFrame(),
+        'GLOBAL_DATA': pd.DataFrame(),
+        
+        # Binning Session States
+        'Binning_Selected_Columns': [],
+        'Binning_Method': 'Quantile',  # Default value
+        'Binning_Configuration': {},
+        
+        # Location Granularizer Session States
+        'Location_Selected_Columns': [],
+        'Granular_Location_Column_Set': False,
+        'geocoded_data': pd.DataFrame(),
+        'geocoded_dict': {},
+        'Granular_Location_Configurations': {},
+        
+        # Unique Identification Analysis Session States
+        'Unique_ID_Results': {},
+        
+        # Progress Indicators
+        'geocoding_progress': 0,
+        'granular_location_progress': 0,
+        
+        # Flags for Processing Steps
+        'is_binning_done': False,
+        'is_geocoding_done': False,
+        'is_granular_location_done': False,
+        'is_unique_id_done': False
+    }
+    
+    for key, value in default_session_state.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+    
+    # Initialize the session_state_logs if not present
+    if 'session_state_logs' not in st.session_state:
+        st.session_state['session_state_logs'] = []
+
+def update_session_state(key: str, value):
+    """
+    Update a session state variable and log the update.
+
+    Args:
+        key (str): The key of the session state variable.
+        value: The value to set for the session state variable.
+    """
+    st.session_state[key] = value
+    log_message = f"🔄 **Session State Updated:** `{key}` has been set/updated."
+    st.session_state['session_state_logs'].append(log_message)
+
+# =====================================
+# Page Configuration and Sidebar
+# =====================================
+
+def setup_page():
+    """Configure the Streamlit page and apply custom styles."""
+    st.set_page_config(
+        page_title="🛠️ De-Identification of Privileged Data (Generalisation Methodology)",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+    hide_streamlit_style()
+    st.title('🛠️ Data Processing and Binning Application')
+
+
+def sidebar_inputs():
+    """Render the sidebar with file upload, settings, binning options, and info."""
+    with st.sidebar:
+        st.header("📂 Upload & Settings")
+        uploaded_file = st.file_uploader("📤 Upload your dataset", type=['csv', 'pkl'])
+        output_file_type = st.selectbox('📁 Select Output File Type', ['csv', 'pkl'], index=0)
+        st.markdown("---")
+
+        # Display warning if CSV is selected
+        if output_file_type == 'csv':
+            st.warning("⚠️ **Note:** Using CSV will result in the loss of some meta-data regarding data types. This will not affect the application's functionality.")
+
+        st.header("⚙️ Binning Options")
+        binning_method = st.selectbox('🔧 Select Binning Method', ['Quantile', 'Equal Width'])
+        if binning_method == 'Equal Width':
+            st.warning("⚠️ **Note:** Using Equal Width will drastically affect the distribution of your data. (Large integrity loss)")  
+        
+        st.markdown("---")
+
+        st.header("ℹ️ About")
+        st.info("""
+            This application allows you to upload a dataset, process and bin numerical and datetime columns, 
+            assess data integrity post-binning, visualize data distributions, and perform unique identification analysis.
+        """)
+        
+        # ============================
+        # Special Section: Session State Info
+        # ============================
+        with st.expander("🔍 Session State Info"):
+            st.markdown("### 📝 Session State Update Logs")
+            if st.session_state['session_state_logs']:
+                for log in st.session_state['session_state_logs']:
+                    st.markdown(log)
+            else:
+                st.write("No session state updates yet.")
+            
+            st.markdown("### 📊 Session State Variable Types")
+            session_info = []
+            for key, value in st.session_state.items():
+                var_type = type(value).__name__
+                dtypes = ""
+                if isinstance(value, pd.DataFrame):
+                    dtypes = ', '.join([f"{col}: {dtype}" for col, dtype in value.dtypes.items()])
+                elif isinstance(value, pd.Series):
+                    dtypes = f"{value.name}: {value.dtype}"
+                session_info.append({
+                    "Key": key,
+                    "Type": var_type,
+                    "Dtypes": dtypes if dtypes else "-"
+                })
+            df_session_info = pd.DataFrame(session_info)
+            st.dataframe(df_session_info)
+        
+    return uploaded_file, output_file_type, binning_method
+
+# =====================================
+# Data Loading and Saving
+# =====================================
+
+def load_and_preview_data(uploaded_file, input_file_type):
+    """Load the uploaded data and display a preview."""
+    try:
+        with st.spinner('Loading data...'):
+            Data, error = load_data(input_file_type, uploaded_file)
+        if error:
+            st.error(error)
+            st.stop()
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        st.error(traceback.format_exc())
+        st.stop()
+
+    # Clean column names by removing '\' and '/'
+    Data.columns = Data.columns.str.replace(r'[\\/]', '', regex=True)
+
+    update_session_state('ORIGINAL_DATA', Data.copy())
+    st.subheader('📊 Data Preview (Original Data)')
+    st.dataframe(st.session_state.ORIGINAL_DATA.head())
+
+
+def save_raw_data(Data, output_file_type):
+    """Save the raw data to a CSV or Pickle file."""
+    mapped_save_type = 'pickle' if output_file_type == 'pkl' else 'csv'
+    data_path = os.path.join(DATA_DIR, f'Data.{output_file_type}')
+    try:
+        if mapped_save_type == 'pickle':
+            Data.to_pickle(data_path)
+        else:
+            Data.to_csv(data_path, index=False)
+    except Exception as e:
+        st.error(f"Error saving Data.{output_file_type}: {e}")
+        st.stop()
+    return mapped_save_type, data_path
+
+
+def run_data_processing(mapped_save_type, output_file_type, file_path):
+    """Run the data processing pipeline."""
+    processed_data = run_processing(
+        save_type=mapped_save_type,
+        output_filename=f'processed_data.{output_file_type}',
+        file_path=os.path.join(DATA_DIR, file_path)
+    )
+
+    update_session_state('Processed_Data', processed_data.copy())
+
+# =====================================
+# Binning Tab Functionality
+# =====================================
+
+def perform_binning(processed_data, selected_columns_binning, binning_method, bins):
+    """Perform the binning process on selected columns."""
+    st.markdown("### 🔄 Binning Process")
+    try:
+        with st.spinner('Binning data...'):
+            binner = DataBinner(processed_data, method=binning_method.lower())
+            binned_df, binned_columns = binner.bin_columns(bins)
+
+            # Align both DataFrames (original and binned) to have the same columns
+            OG_Data_BinTab, Data_BinTab = align_dataframes(processed_data, binned_df)
+
+    except Exception as e:
+        st.error(f"Error during binning: {e}")
+        st.error(traceback.format_exc())
+        st.stop()
+
+    st.success("✅ Binning completed successfully!")
+
+    # Display binned columns categorization
+    st.markdown("### 🗂️ Binned Columns Categorization")
+    for dtype, cols in binned_columns.items():
+        if cols:
+            st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
+
+    return OG_Data_BinTab, Data_BinTab
+
+
+def perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning):
+    """Assess data integrity after binning."""
+    original_for_assessment = OG_Data_BinTab[selected_columns_binning].astype('category')
+    data_for_assessment = Data_BinTab[selected_columns_binning]
+
+    handle_integrity_assessment(original_for_assessment, data_for_assessment, PLOTS_DIR)
+
+
+def download_binned_data(data_full, data):
+    """Handle downloading of the binned data."""
+    if data is not None and isinstance(data, pd.DataFrame):
+        # Add Streamlit option to select original or full data
+        download_choice = st.radio(
+            "Choose data to download:",
+            options=["Only Binned Columns", "Full Data"],
+            index=0,
+            key='download_choice'
+        )
+        data_to_download = data_full if download_choice == "Full Data" else data
+    else:
+        data_to_download = None
+
+    if data_to_download is not None:
+        handle_download_binned_data(
+            data=data_to_download,
+            file_type_download=st.selectbox(
+                '📁 Download Format', 
+                ['csv', 'pkl'], 
+                index=0, 
+                key='download_file_type_download'
+            ),
+            save_dataframe_func=save_dataframe
+        )
+
+
+def binning_tab():
+    """Render the Binning Tab in the Streamlit app."""
+    st.header("📊 Binning")
+    
+    processed_data = st.session_state.Processed_Data
+    location_selected = set(st.session_state.Location_Selected_Columns)
+    
+    # Determine available columns by excluding those selected in Location Granulariser
+    available_columns = list(
+        set(processed_data.select_dtypes(
+            include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]']
+        ).columns) - location_selected
+    )
+    
+    # Multiselect widget for selecting columns to bin
+    selected_columns_binning = st.multiselect(
+        'Select columns to bin',
+        options=available_columns,
+        default=st.session_state.Binning_Selected_Columns,
+        key='binning_columns_form'
+    )
+    update_session_state('Binning_Selected_Columns', selected_columns_binning)
+
+    # Configure bins if columns are selected
+    if selected_columns_binning:
+        bins = get_binning_configuration(processed_data, selected_columns_binning)
+        update_session_state('Binning_Configuration', bins)
+    else:
+        st.info("🔄 **Please select at least one column to bin.**")
+
+    # Proceed to binning if bins are configured
+    bins = st.session_state.get('Binning_Configuration')
+    
+    if bins and selected_columns_binning:
+        try:
+            # Perform binning operation
+            OG_Data_BinTab, Data_BinTab = perform_binning(
+                processed_data,
+                selected_columns_binning,
+                st.session_state.Binning_Method,
+                bins
+            )
+
+            # Assess data integrity post-binning
+            perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
+            
+            # Plot density distributions for binned data
+            plot_density_plots_and_display(
+                OG_Data_BinTab[selected_columns_binning].astype('category'), 
+                Data_BinTab[selected_columns_binning], 
+                selected_columns_binning, 
+                PLOTS_DIR
+            )
+            
+            # Update GLOBAL_DATA with the binned columns
+            st.session_state.GLOBAL_DATA[selected_columns_binning] = Data_BinTab[selected_columns_binning]
+            update_session_state('GLOBAL_DATA', st.session_state.GLOBAL_DATA)
+
+            # Mark binning as completed
+            update_session_state('is_binning_done', True)
+            st.success("✅ Binning completed successfully!")
+
+            # Provide option to download the binned data
+            download_binned_data(Data_BinTab, Data_BinTab[selected_columns_binning])
+
+        except Exception as e:
+            st.error(f"Error during binning: {e}")
+    elif selected_columns_binning:
+        st.info("👉 Adjust the bins using the sliders above to run binning.")
+
+# =====================================
+# Location Granulariser Tab Functionality
+# =====================================
+
+def setup_geocoding_options_ui(geocoded_data: pd.DataFrame) -> list:
+    """Render the UI for selecting columns to geocode."""
+    selected_geo_columns = detect_geographical_columns(geocoded_data)
+
+    if not selected_geo_columns:
+        st.warning("No columns detected that likely contain geographical data. Try uploading a different file or renaming location columns.")
+        st.stop()
+    
+    selected_geo_columns = st.multiselect(
+        "Select columns to geocode",
+        options=selected_geo_columns,
+        help="Choose the columns containing location data to geocode.",
+        max_selections=1
+    )
+
+    return selected_geo_columns
+
+
+def perform_geocoding_process(selected_geo_columns, geocoded_data):
+    """Perform geocoding on the selected columns."""
+    if not selected_geo_columns:
+        st.warning("Please select at least one column to geocode.")
+        return
+    else:
+        try:
+            with st.spinner("Processing..."):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                geocoded_data = perform_geocoding(
+                    data=geocoded_data,
+                    selected_geo_columns=selected_geo_columns,
+                    session_state=st.session_state,
+                    progress_bar=progress_bar,
+                    status_text=status_text
+                )
+            update_session_state('geocoded_data', geocoded_data)
+            update_session_state('is_geocoding_done', True)
+            st.success("✅ Geocoding completed!")
+        except ValueError as ve:
+            st.warning(str(ve))
+        except Exception as e:
+            st.error(f"❌ An unexpected error occurred during geocoding: {e}")
+            st.error(traceback.format_exc())
+            st.stop()
+
+
+def perform_granular_location_generation(granularity, selected_geo_columns):
+    """Perform granular location generation."""
+    if st.session_state.geocoded_data.empty:
+        st.warning("Please perform geocoding first.")
+        return
+    else:
+        st.write(st.session_state.geocoded_data.shape)
+        column_name = selected_geo_columns[0]
+        try:
+            with st.spinner("Generating granular location data..."):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                granular_df = generate_granular_location(
+                    data=st.session_state.geocoded_data,
+                    granularity=granularity,
+                    session_state=st.session_state,
+                    progress_bar=progress_bar,
+                    status_text=status_text,
+                    column=column_name
+                )
+            
+            # Update GLOBAL_DATA with the new granular location
+            st.write(granular_df.shape)
+            st.session_state.GLOBAL_DATA[column_name] = granular_df[column_name]
+            update_session_state('GLOBAL_DATA', st.session_state.GLOBAL_DATA)
+
+            # Track the addition of the new column for future analysis
+            if column_name not in st.session_state.Location_Selected_Columns:
+                st.session_state.Location_Selected_Columns.append(column_name)
+                update_session_state('Location_Selected_Columns', st.session_state.Location_Selected_Columns)
+                st.success(f"🔄 '{column_name}' added to Location_Selected_Columns list.")
+            else:
+                st.info(f"ℹ️ '{column_name}' is already in Location_Selected_Columns list.")
+
+            update_session_state('is_granular_location_done', True)
+            st.dataframe(granular_df.head())
+            
+        except Exception as e:
+            st.error(f"❌ Error during granular location generation: {e}")
+            st.error(traceback.format_exc())
+
+
+def location_granulariser_tab():
+    """Render the Location Granulariser Tab in the Streamlit app."""
+    st.header("📍 Location Data Geocoding Granulariser")
+    
+    # Geocoding process
+    st.header("1️⃣ Geocoding")
+
+    geocoded_data = st.session_state.geocoded_data.copy() if not st.session_state.geocoded_data.empty else st.session_state.ORIGINAL_DATA.copy()
+    st.dataframe(geocoded_data.head())
+
+    selected_geo_columns = setup_geocoding_options_ui(geocoded_data)
+
+    preprocess_button = st.button("📂 Start Geocoding")
+    if preprocess_button:
+        perform_geocoding_process(selected_geo_columns, geocoded_data)
+
+    # Granular location generation
+    st.header("2️⃣ Granular Location Generation")
+
+    granularity_options = ["address", "suburb", "city", "state", "country", "continent"]
+    granularity = st.selectbox(
+        "Select Location Granularity",
+        options=granularity_options,
+        help="Choose the level of granularity for location identification."
+    )
+    generate_granular_button = st.button("📈 Generate Granular Location Column")
+    if generate_granular_button:
+        perform_granular_location_generation(granularity, selected_geo_columns)
+        update_session_state('Location_Selected_Columns', selected_geo_columns.copy())
+
+    # Display geocoded data with granular location
+    display_geocoded_with_granular_data()
+    
+    # Map display
+    if not st.session_state.geocoded_data.empty:
+        map_section()
+
+
+def display_geocoded_with_granular_data():
+    """Display geocoded data with granular location and provide download options."""
+    if not st.session_state.geocoded_data.empty:
+        # Check if any granular location columns exist in GLOBAL_DATA
+        granular_columns_present = [col for col in st.session_state.Location_Selected_Columns if col in st.session_state.GLOBAL_DATA.columns]
+        if granular_columns_present:
+            # output categories in the granular location column
+            categories = st.session_state.GLOBAL_DATA[granular_columns_present].apply(lambda x: x.astype('category').cat.categories)
+
+            # Display the DataFrame of categories
+            st.subheader("📝 Categories in Granular Location Column")
+            st.dataframe(categories)
+            
+            st.download_button(
+                label="💾 Download Data with Granular Location",
+                data=st.session_state.GLOBAL_DATA[granular_columns_present].to_csv(index=False).encode('utf-8'),
+                file_name="geocoded_data_with_granularity.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("👉 Granular location data not available. Please generate it first.")
+    else:
+        st.info("👉 Please perform geocoding and granular location generation first.")
+
+
+def map_section():
+    """Handle the map display functionality."""
+    st.markdown("---")
+    
+    try:
+        map_data = prepare_map_data(st.session_state.geocoded_data)
+        load_map_button = st.button("🗺️ Load Map")
+        
+        if load_map_button:
+            st.map(map_data[['lat', 'lon']], use_container_width=True, zoom=2)
+    except ValueError as ve:
+        st.info(str(ve))
+    except Exception as e:
+        st.error(f"❌ An unexpected error occurred while preparing the map: {e}")
+        st.error(traceback.format_exc())
+
+# =====================================
+# Unique Identification Analysis Tab Functionality
+# =====================================
+
+def unique_identification_section_ui(selected_columns_uniquetab):
+    """Render the UI for Unique Identification Analysis."""
+    st.markdown("### 🔍 Unique Identification Analysis")
+    with st.expander("ℹ️ **About:**"):
+        st.write("""
+            This section analyzes combinations of binned columns and granular location columns to determine 
+            how many unique observations can be identified by each combination of these features.
+        """)
+
+    # Use a form to group inputs and button together
+    with st.form("unique_id_form"):
+    
+        st.write("#### 🧮 Configure Unique Identification Analysis")
+
+        col_count = len(selected_columns_uniquetab)
+        col1, col2 = st.columns(2)
+        with col1:
+            min_comb_size = st.number_input('Minimum Combination Size', min_value=1, max_value=col_count, value=1, step=1)
+        with col2:
+            max_comb_size = st.number_input('Maximum Combination Size', min_value=min_comb_size, max_value=col_count, value=col_count, step=1)
+
+        if max_comb_size > 5:
+            st.warning("⚠️  **Note:** Combinations larger than 5 may take a long time to compute depending on bin count.")
+
+        # Submit button
+        submit_button = st.form_submit_button(label='🧮 Perform Unique Identification Analysis')
+
+    return min_comb_size, max_comb_size, submit_button
+
+
+def perform_unique_identification_analysis(original_for_assessment, data_for_assessment, selected_columns_uniquetab, min_comb_size, max_comb_size):
+    """Handle the Unique Identification Analysis process."""
+    try:
+        results = handle_unique_identification_analysis(
+            original_df=original_for_assessment,
+            binned_df=data_for_assessment,
+            columns_list=selected_columns_uniquetab,
+            min_comb_size=min_comb_size,
+            max_comb_size=max_comb_size
+        )
+        update_session_state('Unique_ID_Results', results)
+        display_unique_identification_results(results)
+        update_session_state('is_unique_id_done', True)
+    except Exception as e:
+        st.error(f"❌ Error during unique identification analysis: {e}")
+        st.error(traceback.format_exc())
+
+
+def unique_identification_analysis_tab():
+    """Render the Unique Identification Analysis Tab in the Streamlit app."""
+    st.header("🔍 Unique Identification Analysis")
+    st.markdown("### 🔢 Selected Columns for Analysis")
+
+    selected_columns_uniquetab = []
+
+    # Combine selections from Binning and Location Granulariser
+    if st.session_state.Binning_Selected_Columns and st.session_state.Location_Selected_Columns:
+        granular_columns = st.session_state.Location_Selected_Columns 
+        selected_columns_uniquetab = st.session_state.Binning_Selected_Columns + granular_columns
+        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
+    elif st.session_state.Binning_Selected_Columns:
+        selected_columns_uniquetab = st.session_state.Binning_Selected_Columns
+        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
+    elif st.session_state.Location_Selected_Columns:
+        granular_columns = st.session_state.Location_Selected_Columns
+        selected_columns_uniquetab = granular_columns
+        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
+    else:
+        selected_columns_uniquetab = None
+        st.info("👉 **Please use the Binning and/or Location Granulariser tabs to select columns for analysis.**")
+
+    # Display global data if available
+    if not st.session_state.GLOBAL_DATA.empty:
+        st.subheader('📊 Data Preview (Global Data)')
+        st.dataframe(st.session_state.GLOBAL_DATA.head())
+
+        if not selected_columns_uniquetab:
+            st.warning("⚠️ **No columns selected in Binning or Location Granulariser tabs for analysis.**")
+            st.info("🔄 **Please select columns in the Binning tab and/or generate granular location data to perform Unique Identification Analysis.**")
+        else:
+            # Verify that selected_columns_uniquetab exist in both ORIGINAL_DATA and GLOBAL_DATA
+            existing_columns = [
+                col for col in selected_columns_uniquetab 
+                if col in st.session_state.GLOBAL_DATA.columns and col in st.session_state.ORIGINAL_DATA.columns
+            ]
+            missing_in_global = [
+                col for col in selected_columns_uniquetab 
+                if col not in st.session_state.GLOBAL_DATA.columns
+            ]
+            missing_in_original = [
+                col for col in selected_columns_uniquetab 
+                if col not in st.session_state.ORIGINAL_DATA.columns
+            ]
+
+            if missing_in_global or missing_in_original:
+                if missing_in_global:
+                    st.error(f"The following selected columns are missing from Global Data: {', '.join(missing_in_global)}. Please check your selections.")
+                if missing_in_original:
+                    st.error(f"The following selected columns are missing from Original Data: {', '.join(missing_in_original)}. Please check your selections.")
+                st.stop()
+
+            # Proceed with the unique identification analysis
+            original_for_assessment = st.session_state.ORIGINAL_DATA[existing_columns].copy()
+            data_for_assessment = st.session_state.GLOBAL_DATA[existing_columns].copy()
+
+            min_comb_size, max_comb_size, submit_button = unique_identification_section_ui(selected_columns_uniquetab)
+
+            if submit_button:
+                perform_unique_identification_analysis(
+                    original_for_assessment=original_for_assessment.astype('category'),  # Categorize the original data regardless of its granularity
+                    data_for_assessment=data_for_assessment.astype('category'),          # Should already be categorized, but ensure categorization
+                    selected_columns_uniquetab=existing_columns,
+                    min_comb_size=min_comb_size,
+                    max_comb_size=max_comb_size
+                )
+    else:
+        st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
+
+# =====================================
+# Main Function
+# =====================================
+
+def main():
+    """Main function to orchestrate the Streamlit app."""
+    setup_page()
+    initialize_session_state()
+    uploaded_file, output_file_type, binning_method = sidebar_inputs()
+
+    # Update binning method in session state
+    update_session_state('Binning_Method', binning_method)
+
+    if uploaded_file is not None:
+        # Determine input file type
+        if uploaded_file.name.endswith('.csv'):
+            input_file_type = 'csv'
+        elif uploaded_file.name.endswith('.pkl'):
+            input_file_type = 'pkl'
+        else:
+            st.error("Unsupported file type! Please upload a CSV or Pickle (.pkl) file.")
+            st.stop()
+
+        load_and_preview_data(uploaded_file, input_file_type)
+        mapped_save_type, file_path = save_raw_data(st.session_state.ORIGINAL_DATA, output_file_type)
+        run_data_processing(mapped_save_type, output_file_type, file_path)
+        
+        # Reset processing flags upon new upload
+        processing_flags = ['is_binning_done', 'is_geocoding_done', 'is_granular_location_done', 'is_unique_id_done']
+        for flag in processing_flags:
+            update_session_state(flag, False)
+    else:
+        st.info("🔄 **Please upload a file to get started.**")
+        st.stop()
+
+    # Create Tabs
+    tabs = st.tabs([
+        "📊 Binning", 
+        "📍 Location Data Geocoding Granulariser", 
+        "🔍 Unique Identification Analysis"
+    ])
+
+    ######################
+    # Binning Tab
+    ######################
+    with tabs[0]:
+        binning_tab()
+
+    ######################
+    # Location Granulariser Tab
+    ######################
+    with tabs[1]:
+        location_granulariser_tab()
+
+    ######################
+    # Unique Identification Analysis Tab
+    ######################
+    with tabs[2]:
+        unique_identification_analysis_tab()
+
+# =====================================
+# Entry Point
+# =====================================
+
+if __name__ == "__main__":
+    main()
+
+```
+
+"config.py"
+
+```
+# src/config.py
+
+import os
+
+# Base directories
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+OUTPUT_DIR = os.path.join(DATA_DIR, 'outputs')
+GEOCACHE_DB = os.path.join(DATA_DIR, 'geocache.db')
+
+# Subdirectories under outputs
+PROCESSED_DATA_DIR = os.path.join(OUTPUT_DIR, 'processed_data')
+REPORTS_DIR = os.path.join(OUTPUT_DIR, 'reports')
+PLOTS_DIR = os.path.join(OUTPUT_DIR, 'plots')
+UNIQUE_IDENTIFICATIONS_DIR = os.path.join(OUTPUT_DIR, 'unique_identifications')
+CAT_MAPPING_DIR = os.path.join(OUTPUT_DIR, 'category_mappings')
+
+# Ensure directories exist
+os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR, exist_ok=True)
+os.makedirs(PLOTS_DIR, exist_ok=True)
+os.makedirs(UNIQUE_IDENTIFICATIONS_DIR, exist_ok=True)
+os.makedirs(CAT_MAPPING_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+
+```
+
+"data_binner.py"
+
+```
+# data_binner.py
+
+import pandas as pd
+from typing import Tuple, Dict, List
+
+class DataBinner:
+    """
+    A class to bin specified columns in a Pandas DataFrame based on provided bin counts and binning methods.
+    """
+    
+    def __init__(self, Data: pd.DataFrame, method: str = 'equal width'):
+        """
+        Initializes the DataBinner with the original DataFrame and binning method.
+        """
+        self.original_df = Data.copy()
+        self.binned_df = pd.DataFrame()
+        self.binned_columns = {
+            'datetime': [],
+            'integer': [],
+            'float': [],
+            'unsupported': []
+        }
+        self.method = method.lower()
+        self._validate_method()
+    
+    def _validate_method(self):
+        """
+        Validates the binning method. Raises a ValueError if the method is unsupported.
+        """
+        supported_methods = ['equal width', 'quantile']
+        if self.method not in supported_methods:
+            raise ValueError(f"Unsupported binning method '{self.method}'. Supported methods are: {supported_methods}")
+    
+    def bin_columns(
+        self,
+        bin_dict: Dict[str, int]
+    ) -> Tuple[pd.DataFrame, Dict[str, List[str]]]:
+        """
+        Bins specified columns in the DataFrame based on the provided bin counts and binning method.
+        """
+        # Initialize dictionary to categorize binned columns
+        self.binned_columns = {
+            'datetime': [],
+            'integer': [],
+            'float': [],
+            'unsupported': []
+        }
+
+        # Create a copy of the DataFrame to avoid modifying the original data
+        Bin_Data = self.original_df.copy()
+
+        for col, bins in bin_dict.items():
+            if col not in Bin_Data.columns:
+                print(f"⚠️ Column '{col}' does not exist in the DataFrame. Skipping.")
+                continue
+
+            try:
+                if pd.api.types.is_datetime64_any_dtype(Bin_Data[col]):
+                    # Binning datetime columns using pd.cut or pd.qcut based on method
+                    Bin_Data[col] = self._bin_column(Bin_Data[col], bins, self.method)
+                    self.binned_columns['datetime'].append(col)
+
+                elif pd.api.types.is_integer_dtype(Bin_Data[col]):
+                    Bin_Data[col] = self._bin_column(Bin_Data[col], bins, self.method)
+                    self.binned_columns['integer'].append(col)
+
+                elif pd.api.types.is_float_dtype(Bin_Data[col]):
+                    Bin_Data[col] = self._bin_column(Bin_Data[col], bins, self.method)
+                    self.binned_columns['float'].append(col)
+
+                else:
+                    print(f"Column '{col}' has unsupported dtype '{Bin_Data[col].dtype}'. Skipping.")
+                    self.binned_columns['unsupported'].append(col)
+
+            except Exception as e:
+                # Detailed error messages based on column type
+                if pd.api.types.is_datetime64_any_dtype(Bin_Data[col]):
+                    print(f"Failed to bin datetime column '{col}': {e}")
+                elif pd.api.types.is_integer_dtype(Bin_Data[col]):
+                    print(f"Failed to bin integer column '{col}': {e}")
+                elif pd.api.types.is_float_dtype(Bin_Data[col]):
+                    print(f"Failed to bin float column '{col}': {e}")
+                else:
+                    print(f"Failed to bin column '{col}': {e}")
+                self.binned_columns['unsupported'].append(col)
+
+        # Retain only the successfully binned columns
+        successfully_binned = (
+            self.binned_columns['datetime'] +
+            self.binned_columns['integer'] +
+            self.binned_columns['float']
+        )
+        self.binned_df = Bin_Data[successfully_binned]
+
+        return self.binned_df, self.binned_columns
+
+    def _bin_column(self, series: pd.Series, bins: int, method: str) -> pd.Series:
+        """
+        Bins a single column using the specified method and returns integer labels as categorical.
+
+        Parameters:
+            series (pd.Series): The column to bin.
+            bins (int): The number of bins.
+            method (str): The binning method ('equal width' or 'quantile').
+
+        Returns:
+            pd.Series: The binned column as categorical integers starting at 1.
+        """
+        if method == 'equal width':
+            binned = pd.cut(
+                series,
+                bins=bins,
+                labels=False,
+                duplicates='drop'
+            )
+        elif method == 'quantile':
+            binned = pd.qcut(
+                series,
+                q=bins,
+                labels=False,
+                duplicates='drop'
+            )
+        else:
+            # This should not happen due to validation in __init__
+            raise ValueError(f"Unsupported binning method '{method}'.")
+
+        return (binned).astype('category')
+
+    def get_binned_data(self) -> pd.DataFrame:
+        """
+        Retrieves the binned DataFrame.
+        """
+        return self.binned_df.copy()
+
+    def get_binned_columns(self) -> Dict[str, List[str]]:
+        """
+        Retrieves the categorization of binned columns by data type.
+        """
+        return self.binned_columns.copy()
+
+```
+
+"data_integrity_assessor.py"
+
+```
+# data_integrity_assessor.py
+
+import pandas as pd
+import numpy as np
+from scipy.stats import entropy
+import matplotlib.pyplot as plt
+import os
+
+class DataIntegrityAssessor:
+    def __init__(self, original_df: pd.DataFrame, binned_df: pd.DataFrame):
+        self.original_df = original_df.copy()
+        self.binned_df = binned_df.copy()
+        self.integrity_report = None
+        self.overall_loss = None
+
+        self._validate_dataframes()
+
+    def _validate_dataframes(self):
+        if not self.original_df.columns.equals(self.binned_df.columns):
+            raise ValueError("Both DataFrames must have the same columns.")
+
+        for col in self.original_df.columns:
+            if not pd.api.types.is_object_dtype(self.original_df[col]) and not pd.api.types.is_categorical_dtype(self.original_df[col]):
+                raise TypeError(f"Column '{col}' is not categorical in the original DataFrame.")
+            if not pd.api.types.is_object_dtype(self.binned_df[col]) and not pd.api.types.is_categorical_dtype(self.binned_df[col]):
+                raise TypeError(f"Column '{col}' is not categorical in the binned DataFrame.")
+
+    @staticmethod
+    def calculate_entropy(series: pd.Series) -> float:
+        counts = series.value_counts(normalize=True)
+        return entropy(counts, base=2)
+
+    def assess_integrity_loss(self):
+        integrity_data = {
+            'Variable': [],
+            'Original Entropy (bits)': [],
+            'Binned Entropy (bits)': [],
+            'Entropy Loss (bits)': [],
+            'Percentage Loss (%)': []
+        }
+
+        for col in self.original_df.columns:
+            original_entropy = self.calculate_entropy(self.original_df[col])
+            binned_entropy = self.calculate_entropy(self.binned_df[col])
+            entropy_loss = original_entropy - binned_entropy
+            percentage_loss = (entropy_loss / original_entropy) * 100 if original_entropy != 0 else 0
+
+            integrity_data['Variable'].append(col)
+            integrity_data['Original Entropy (bits)'].append(round(original_entropy, 6))
+            integrity_data['Binned Entropy (bits)'].append(round(binned_entropy, 6))
+            integrity_data['Entropy Loss (bits)'].append(round(entropy_loss, 6))
+            integrity_data['Percentage Loss (%)'].append(round(percentage_loss, 2))
+
+        self.integrity_report = pd.DataFrame(integrity_data)
+        self.overall_loss = round(self.integrity_report['Percentage Loss (%)'].mean(), 2)
+
+    def generate_report(self) -> pd.DataFrame:
+        if self.integrity_report is None:
+            self.assess_integrity_loss()
+        return self.integrity_report.copy()
+
+    def save_report(self, filepath: str):
+        if self.integrity_report is None:
+            self.assess_integrity_loss()
+        self.integrity_report.to_csv(filepath, index=False)
+        print(f"Integrity report saved to {os.path.abspath(filepath)}")
+
+    def plot_entropy(self, save_path: str = None, figsize: tuple = (10, 6)):
+        if self.integrity_report is None:
+            self.assess_integrity_loss()
+
+        variables = self.integrity_report['Variable']
+        original_entropy = self.integrity_report['Original Entropy (bits)']
+        binned_entropy = self.integrity_report['Binned Entropy (bits)']
+
+        x = np.arange(len(variables))  # the label locations
+        width = 0.35  # the width of the bars
+
+        fig, ax = plt.subplots(figsize=figsize)
+        rects1 = ax.bar(x - width/2, original_entropy, width, label='Original Entropy', alpha=0.5, edgecolor='blue', color='blue')
+        rects2 = ax.bar(x + width/2, binned_entropy, width, label='Binned Entropy', alpha=0.5, edgecolor='orange', color='orange')
+
+        # Add some text for labels, title and custom x-axis tick labels, etc.
+        ax.set_ylabel('Entropy (bits)')
+        ax.set_title('Original vs Binned Entropy per Variable')
+        ax.set_xticks(x)
+        ax.set_xticklabels(variables, rotation=45, ha='right')
+        ax.legend()
+
+        # Attach a text label above each bar in rects, displaying its height.
+        def autolabel(rects):
+            for rect in rects:
+                height = rect.get_height()
+                ax.annotate(f'{height:.2f}',
+                            xy=(rect.get_x() + rect.get_width() / 2, height),
+                            xytext=(0, 3),  # 3 points vertical offset
+                            textcoords="offset points",
+                            ha='center', va='bottom')
+
+        autolabel(rects1)
+        autolabel(rects2)
+
+        fig.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+            print(f"Entropy plot saved to {os.path.abspath(save_path)}")
+        else:
+            plt.show()
+    
+        return fig  # Add this line to return the Figure object
+
+    def get_overall_loss(self) -> float:
+        if self.overall_loss is None:
+            self.assess_integrity_loss()
+        return self.overall_loss
+
+```
+
+"density_plotter.py"
+
+```
+# density_plotter.py
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import List, Optional, Tuple
+import math
+import os
+
+class DensityPlotter:
+    """
+    A class to generate density plots for selected categorical or integer columns in a Pandas DataFrame.
+
+    Supported Data Types:
+        - Categorical
+        - Integer (treated as categorical)
+    """
+
+    def __init__(
+        self,
+        dataframe: pd.DataFrame,
+        category_columns: List[str],
+        figsize: Tuple[int, int] = (20, 20),
+        save_path: Optional[str] = None,
+        plot_style: str = 'whitegrid'
+    ):
+        """
+        Initialize the DensityPlotter with a DataFrame and selected columns.
+
+        Parameters:
+            dataframe (pd.DataFrame): The input DataFrame to plot.
+            category_columns (List[str]): List of categorical or integer columns to plot.
+            figsize (Tuple[int, int], optional): Size of the overall figure. Default is (20, 20).
+            save_path (Optional[str], optional): Path to save the plot image. If None, the plot is displayed.
+            plot_style (str, optional): Seaborn style for the plots. Default is 'whitegrid'.
+        """
+        self.dataframe = dataframe.copy()
+        self.category_columns = category_columns
+        self.figsize = figsize
+        self.save_path = save_path
+        self.plot_style = plot_style
+
+        # Initialize Seaborn style
+        sns.set_style(self.plot_style)
+
+        # Validate columns
+        self._validate_category_columns()
+
+    def _validate_category_columns(self):
+        """
+        Validate that the specified columns exist in the DataFrame and have appropriate data types.
+        """
+        for col in self.category_columns:
+            if col not in self.dataframe.columns:
+                raise ValueError(f"Column '{col}' does not exist in the DataFrame.")
+            if not (
+                pd.api.types.is_categorical_dtype(self.dataframe[col]) or
+                pd.api.types.is_integer_dtype(self.dataframe[col])
+            ):
+                raise TypeError(
+                    f"Column '{col}' is not of categorical dtype or integer dtype."
+                )
+
+    def plot_grid(self):
+        """
+        Generate and display/save the grid of density plots for the selected columns.
+        """
+        total_plots = len(self.category_columns)
+        if total_plots == 0:
+            print("No columns to plot.")
+            return
+
+        # Determine grid size (rows and columns)
+        cols = math.ceil(math.sqrt(total_plots))
+        rows = math.ceil(total_plots / cols)
+
+        # Create subplots
+        fig, axes = plt.subplots(rows, cols, figsize=self.figsize)
+        if total_plots == 1:
+            axes = [axes]  # Ensure axes is iterable
+        else:
+            axes = axes.flatten()  # Flatten in case of multiple rows
+
+        plot_idx = 0  # Index to track the current subplot
+
+        # Plot Columns with Histogram and Density Plots
+        for col in self.category_columns:
+            ax = axes[plot_idx]
+            try:
+                # Convert integer columns to categorical codes
+                if pd.api.types.is_integer_dtype(self.dataframe[col]):
+                    data = self.dataframe[col].astype('category').cat.codes
+                else:
+                    data = self.dataframe[col].astype('category').cat.codes
+
+                # Get the counts for each category
+                counts = self.dataframe[col].value_counts().sort_index()
+
+                # Determine if histogram should be overlaid
+                unique_categories = counts.size
+
+                # Plot histogram first if unique categories < 30
+                if unique_categories < 100:
+                    sns.histplot(
+                        counts.values,
+                        ax=ax,
+                        color='blue',
+                        alpha=0.4,
+                        bins=unique_categories,
+                        discrete=True,
+                        stat='density',  # Normalize histogram to density
+                        label='Histogram'
+                    )
+
+                    # Overlay density plot
+                    sns.kdeplot(
+                        data=counts.values,
+                        ax=ax,
+                        fill=True,
+                        color='orange',
+                        bw_adjust=0.5,  # Adjust bandwidth for better visualization
+                        label='Density'
+                    )
+
+                    # Add legend to differentiate plots
+                    ax.legend()
+                else:
+                    # Plot only density plot for columns with >=30 unique categories
+                    sns.kdeplot(
+                        data=counts.values,
+                        ax=ax,
+                        fill=True,
+                        color='orange',
+                        bw_adjust=0.5,  # Adjust bandwidth for better visualization
+                        label='Density'
+                    )
+                    ax.legend()
+
+                # Set plot titles and labels
+                ax.set_title(col)             # Add title
+                ax.set_ylabel('Density')
+                ax.set_xlabel('')             # Remove x label
+                ax.set_xticks([])             # Remove x ticks
+
+            except Exception as e:
+                print(f"Failed to plot column '{col}': {e}")
+            plot_idx += 1
+
+        # Remove any unused subplots
+        for idx in range(plot_idx, len(axes)):
+            fig.delaxes(axes[idx])
+
+        plt.tight_layout()
+
+        # Save or show the plot
+        if self.save_path:
+            # Ensure the directory exists
+            save_dir = os.path.dirname(self.save_path)
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+            try:
+                plt.savefig(self.save_path, dpi=300)
+                print(f"Density plots saved to {self.save_path}")
+            except Exception as e:
+                print(f"Failed to save plot to '{self.save_path}': {e}")
+        else:
+            plt.show()
+
+        return fig
+
+```
+
+"unique_bin_identifier.py"
+
+```
+# unique_bin_identifier.py
+
+import pandas as pd
+from itertools import combinations
+from typing import Tuple, List, Dict, Optional
+import warnings
+
+class UniqueBinIdentifier:
+    """
+    A class to identify unique observations in the original DataFrame based on combinations
+    of bin columns from the binned DataFrame.
+
+    Attributes:
+        original_df (pd.DataFrame): The original DataFrame with full data.
+        binned_df (pd.DataFrame): The binned DataFrame with reduced bin counts.
+        results (pd.DataFrame): DataFrame containing combinations and unique identification counts.
+    """
+
+    def __init__(self, original_df: pd.DataFrame, binned_df: pd.DataFrame):
+        """
+        Initializes the UniqueBinIdentifier with original and binned DataFrames.
+
+        Parameters:
+            original_df (pd.DataFrame): The original DataFrame with full data.
+            binned_df (pd.DataFrame): The binned DataFrame with reduced bin counts.
+        """
+        self.original_df = original_df.reset_index(drop=True)
+        self.binned_df = binned_df.reset_index(drop=True)
+        self.results = pd.DataFrame()
+
+        self._validate_dataframes()
+
+    def _validate_dataframes(self):
+        """
+        Validates that the original and binned DataFrames have the same number of rows.
+        """
+        if len(self.original_df) != len(self.binned_df):
+            raise ValueError("Original and binned DataFrames must have the same number of rows.")
+
+    def find_unique_identifications(
+        self,
+        min_comb_size: int = 1,
+        max_comb_size: Optional[int] = None,
+        columns: Optional[List[str]] = None,
+        progress_callback: Optional[callable] = None
+    ) -> pd.DataFrame:
+        if columns is None:
+            columns = list(self.binned_df.columns)
+        else:
+            # Validate that provided columns exist in the binned DataFrame
+            missing_cols = set(columns) - set(self.binned_df.columns)
+            if missing_cols:
+                raise ValueError(f"The following columns are not in the binned DataFrame: {missing_cols}")
+
+        if max_comb_size is None:
+            max_comb_size = len(columns)
+        else:
+            max_comb_size = min(max_comb_size, len(columns))
+
+        if min_comb_size < 1:
+            raise ValueError("min_comb_size must be at least 1.")
+
+        if max_comb_size < min_comb_size:
+            raise ValueError("max_comb_size must be greater than or equal to min_comb_size.")
+
+        results = []
+
+        total_combinations = sum(
+            [self._nCr(len(columns), r) for r in range(min_comb_size, max_comb_size + 1)]
+        )
+
+        print(f"Total combinations to analyze: {total_combinations}")
+
+        combination_counter = 0
+
+        for comb_size in range(min_comb_size, max_comb_size + 1):
+            for comb in combinations(columns, comb_size):
+                combination_counter += 1
+                if progress_callback and combination_counter % 1000 == 0:
+                    progress_callback(combination_counter, total_combinations)
+                # Create a temporary DataFrame with the combination of bins
+                temp_df = self.binned_df[list(comb)]
+
+                # Group by the combination and count the number of occurrences
+                group_counts = temp_df.groupby(list(comb)).size()
+
+                # Number of unique identifications is the number of groups with size ==1
+                unique_identifications = (group_counts == 1).sum()
+
+                # Append the result
+                results.append({
+                    'Combination': comb,
+                    'Unique_Identifications': unique_identifications
+                })
+
+        # Create a DataFrame from the results
+        self.results = pd.DataFrame(results)
+
+        # Sort the results by 'Unique_Identifications' descending
+        self.results.sort_values(by='Unique_Identifications', ascending=False, inplace=True)
+        self.results.reset_index(drop=True, inplace=True)
+
+        print("Unique identification analysis complete.")
+
+        return self.results
+
+    @staticmethod
+    def _nCr(n: int, r: int) -> int:
+        """
+        Computes the number of combinations (n choose r).
+
+        Parameters:
+            n (int): Total number of items.
+            r (int): Number of items to choose.
+
+        Returns:
+            int: Number of combinations.
+        """
+        from math import comb
+        return comb(n, r)
+
+    def get_results(self) -> pd.DataFrame:
+        """
+        Retrieves the results of the unique identification analysis.
+
+        Returns:
+            pd.DataFrame: DataFrame with columns 'Combination' and 'Unique_Identifications'.
+        """
+        if self.results.empty:
+            raise ValueError("No results found. Please run 'find_unique_identifications' first.")
+        return self.results.copy()
+
+    def save_results(self, filepath: str):
+        """
+        Saves the unique identification results to a CSV file.
+
+        Parameters:
+            filepath (str): The path where the results will be saved.
+        """
+        if self.results.empty:
+            raise ValueError("No results to save. Please run 'find_unique_identifications' first.")
+        self.results.to_csv(filepath, index=False)
+        print(f"📄 Unique identification results saved to {filepath}")
+
+    def plot_results(self, top_n: int = 10, save_path: Optional[str] = None):
+        """
+        Plots the top N combinations with the highest number of unique identifications.
+
+        Parameters:
+            top_n (int, optional): Number of top combinations to plot. Default is 10.
+            save_path (str, optional): If provided, saves the plot to the specified path.
+        """
+        if self.results.empty:
+            raise ValueError("No results to plot. Please run 'find_unique_identifications' first.")
+
+        import matplotlib.pyplot as plt
+        import matplotlib.ticker as ticker
+
+        # Select top N combinations
+        plot_data = self.results.head(top_n)
+
+        # Prepare labels
+        labels = [' & '.join(comb) for comb in plot_data['Combination']]
+        counts = plot_data['Unique_Identifications']
+
+        # Create the bar plot
+        fig, ax = plt.subplots(figsize=(12, 8))
+        bars = ax.barh(labels, counts, color='skyblue')
+        ax.set_xlabel('Number of Unique Identifications')
+        ax.set_title(f'Top {top_n} Bin Combinations for Unique Identifications')
+        ax.invert_yaxis()  # Highest at the top
+
+        # Add counts to the bars
+        for bar in bars:
+            width = bar.get_width()
+            ax.annotate(f'{width}',
+                        xy=(width, bar.get_y() + bar.get_height() / 2),
+                        xytext=(5, 0),  # 5 points horizontal offset
+                        textcoords="offset points",
+                        ha='left', va='center')
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+            print(f"📈 Plot saved to {save_path}")
+        else:
+            plt.show()
+
+```
+
+"__init__.py"
+
+```
+# src/binning/__init__.py
+
+from .data_binner import DataBinner
+from .data_integrity_assessor import DataIntegrityAssessor
+from .density_plotter import DensityPlotter
+from .unique_bin_identifier import UniqueBinIdentifier
+```
+
+"Detect_Dtypes.py"
+
+```
+# Detect_Dtypes.py
+
+import pandas as pd
+import numpy as np
+import logging
+from typing import Dict, Tuple, Optional
+import sys
+import concurrent.futures
+import re
+
+
+class DtypeDetector:
+    def __init__(
+        self,
+        date_threshold: float = 0.5,
+        numeric_threshold: float = 0.9,
+        factor_threshold_ratio: float = 0.5,
+        factor_threshold_unique: int = 50,
+        dayfirst: bool = False,
+        log_level: str = 'INFO',
+        log_file: Optional[str] = None,
+        convert_factors_to_int: bool = True,
+        date_format: Optional[str] = None  
+    ):
+        """
+        Initialize the DtypeDetector with configurable thresholds and logging.
+
+        Parameters:
+            date_threshold (float): Threshold for date detection.
+            numeric_threshold (float): Threshold for numeric detection.
+            factor_threshold_ratio (float): Threshold ratio for factor detection.
+            factor_threshold_unique (int): Threshold for unique values in factor detection.
+            dayfirst (bool): Whether to interpret the first value in dates as the day.
+            log_level (str): Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+            log_file (Optional[str]): Path to save the log file. If None, logs are printed to stdout.
+            convert_factors_to_int (bool): Whether to convert factors to integer codes. 
+                If False, factors remain as categorical types with original string labels.
+            date_format (Optional[str]): Desired date format (e.g., '%d-%m-%Y'). 
+                If specified, date columns will be formatted as strings in this format.
+        """
+        self.convert_factors_to_int = convert_factors_to_int
+        self.date_format = date_format 
+        self.thresholds = {
+            'date_threshold': date_threshold,
+            'numeric_threshold': numeric_threshold,
+            'factor_threshold_ratio': factor_threshold_ratio,
+            'factor_threshold_unique': factor_threshold_unique
+        }
+        self.dayfirst = dayfirst
+        self.data_types: Dict[str, str] = {}
+        self.series_mapping: Dict[str, Dict[int, str]] = {}
+
+        # Configure logging
+        log_handlers = [logging.StreamHandler(sys.stdout)]
+        if log_file:
+            log_handlers.append(logging.FileHandler(log_file))
+        
+        logging.basicConfig(
+            level=getattr(logging, log_level.upper(), logging.INFO),
+            format='%(asctime)s [%(levelname)s] %(message)s',
+            handlers=log_handlers
+        )
+        self.logger = logging.getLogger(__name__)
+    
+    def clean_column_names(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Clean column names by removing any '/' or '\' characters.
+
+        Parameters:
+            data (pd.DataFrame): The DataFrame with original column names.
+
+        Returns:
+            pd.DataFrame: The DataFrame with cleaned column names.
+        """
+        original_columns = data.columns.tolist()
+        cleaned_columns = []
+        for col in original_columns:
+            # Remove '/' and '\' from column names
+            cleaned_col = re.sub(r'[\\/]', '', col)
+            cleaned_columns.append(cleaned_col)
+            if cleaned_col != col:
+                self.logger.debug(f"Renamed column '{col}' to '{cleaned_col}'")
+        data.columns = cleaned_columns
+        return data
+
+    def determine_column_type(
+        self,
+        series: pd.Series
+    ) -> str:
+        """
+        Determine the type of a pandas Series.
+        Returns 'int', 'float', 'date', 'factor', 'bool', or 'string'.
+        """
+        total = len(series)
+        if total == 0:
+            self.logger.debug(f"Column '{series.name}' is empty. Defaulting to 'string'.")
+            return 'string'  # Default to string for empty columns
+
+        num_unique = series.nunique(dropna=True)
+        self.logger.debug(f"Column '{series.name}': Total={total}, Unique={num_unique}")
+
+        # Attempt to convert to numeric first
+        try:
+            s_numeric = pd.to_numeric(series, errors='coerce')
+            num_not_missing_numeric = s_numeric.notnull().sum()
+            percent_numeric = num_not_missing_numeric / total
+            self.logger.debug(f"Column '{series.name}': Numeric parse success rate: {percent_numeric:.2f}")
+            if percent_numeric > self.thresholds['numeric_threshold']:
+                # Check if all non-NaN values are integers within a tolerance
+                if np.allclose(s_numeric.dropna(), s_numeric.dropna().astype(int), atol=1e-8):
+                    return 'int'
+                else:
+                    return 'float'
+        except Exception as e:
+            self.logger.debug(f"Column '{series.name}': Numeric parsing failed: {e}")
+
+        # Attempt to parse dates
+        try:
+            # Include time in date parsing by specifying formats that include time
+            # Example formats: '%d/%m/%Y %H:%M', '%Y-%m-%d %H:%M', etc.
+            # You can expand this list based on your data
+            date_formats = [
+                '%d/%m/%Y %H:%M',
+                '%d/%m/%Y',
+                '%Y-%m-%d %H:%M',
+                '%Y-%m-%d',
+                '%m/%d/%Y %H:%M',
+                '%m/%d/%Y',
+                '%d-%m-%Y %H:%M',
+                '%d-%m-%Y',
+                '%Y/%m/%d %H:%M',
+                '%Y/%m/%d',
+                '%Y-%m-%d %H:%M:%S%z',
+                '%a %b %d %H:%M:%S %z %Y',
+                '%a %b %d %H:%M:%S +0000 %Y'
+            ]
+            for fmt in date_formats:
+                s_date = pd.to_datetime(series, errors='coerce', format=fmt, dayfirst=self.dayfirst)
+                num_not_missing_date = s_date.notnull().sum()
+                percent_date = num_not_missing_date / total
+                self.logger.debug(f"Column '{series.name}': Date parse success rate with format '{fmt}': {percent_date:.2f}")
+                if percent_date > self.thresholds['date_threshold']:
+                    return 'date'
+        except Exception as e:
+            self.logger.debug(f"Column '{series.name}': Date parsing failed: {e}")
+
+        # Check for boolean
+        unique_values = set(series.dropna().unique())
+        if unique_values <= {0, 1, '0', '1', 'True', 'False', 'true', 'false'}:
+            return 'bool'
+
+        # Check for categorical (factor) with AND condition
+        try:
+            if (num_unique / total) < self.thresholds['factor_threshold_ratio'] and num_unique < self.thresholds['factor_threshold_unique']:
+                return 'factor'
+        except Exception as e:
+            self.logger.debug(f"Column '{series.name}': Factor determination failed: {e}")
+
+        return 'string'
+
+    def convert_series(self, series: pd.Series, dtype: str) -> pd.Series:
+        """
+        Convert a pandas Series to the specified dtype.
+        """
+        if dtype == 'date':
+            dt_series = pd.to_datetime(series, errors='coerce', dayfirst=self.dayfirst)
+            if self.date_format:
+                # Format datetime as string in the specified format
+                formatted_series = dt_series.dt.strftime(self.date_format)
+                return formatted_series
+            else:
+                return dt_series
+        elif dtype == 'factor':
+            category = series.astype('category')
+            # Store the mapping of codes to categories
+            self.series_mapping[series.name] = dict(enumerate(category.cat.categories))
+            if self.convert_factors_to_int:
+                return category.cat.codes  # **Convert to integer codes**
+            else:
+                return category  # **Retain as categorical with string labels**
+        elif dtype == 'int':
+            return pd.to_numeric(series, errors='coerce').astype('Int64')
+        elif dtype == 'float':
+            return pd.to_numeric(series, errors='coerce')
+        elif dtype == 'bool':
+            # Map various representations of booleans to actual booleans
+            return series.map({
+                'True': True, 'False': False, 'true': True, 'false': False,
+                1: True, 0: False
+            }).astype('bool')
+        else:
+            return series.astype(str)
+
+    def process_column(self, col: str, data: pd.DataFrame) -> Tuple[str, str, pd.Series]:
+        """
+        Process a single column: determine its type and convert it.
+        Returns the column name, detected type, and converted series.
+        """
+        try:
+            dtype = self.determine_column_type(data[col])
+            converted_series = self.convert_series(data[col], dtype)
+            self.logger.info(f"Column: {col}, Type Assessed: {dtype}, New Type: {converted_series.dtype}")
+            return (col, dtype, converted_series)
+        except Exception as e:
+            self.logger.warning(f"Failed to process column '{col}': {e}")
+            # Default to string if conversion fails
+            converted_series = data[col].astype(str)
+            self.logger.info(f"      New Type: {converted_series.dtype} (defaulted to string)")
+            return (col, 'string', converted_series)
+
+    def process_dataframe(
+        self,
+        filepath: str,
+        file_type: str = 'csv',
+        use_parallel: bool = True,
+        report_path: str = 'Type_Conversion_Report.csv'
+    ) -> pd.DataFrame:
+        """
+        Read a CSV file, determine column types, convert columns accordingly, and generate a report.
+
+        Parameters:
+            filepath (str): Path to the input CSV file.
+            use_parallel (bool): Whether to use parallel processing for columns.
+            report_path (str): Path to save the type conversion report.
+
+        Returns:
+            pd.DataFrame: The processed DataFrame.
+        """
+
+        try:
+            if file_type == 'csv':
+                data = pd.read_csv(filepath, sep=',')  # Assuming comma deliminated values
+                data = self.clean_column_names(data)
+                self.logger.info(f"Successfully read file: {filepath}")
+            elif file_type == 'pickle':
+                data = pd.read_pickle(filepath)
+                data = self.clean_column_names(data)
+                self.logger.info(f"Successfully read file: {filepath}")
+
+        except FileNotFoundError:
+            self.logger.error(f"File not found: {filepath}")
+            raise
+        except pd.errors.EmptyDataError:
+            self.logger.error("No data: The file is empty.")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error reading the file: {e}")
+            raise
+
+        data_types: Dict[str, str] = {}
+
+        if use_parallel:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = {executor.submit(self.process_column, col, data): col for col in data.columns}
+                for future in concurrent.futures.as_completed(futures):
+                    col, dtype, converted_series = future.result()
+                    data_types[col] = dtype
+                    data[col] = converted_series
+        else:
+            for col in data.columns:
+                col_name, dtype, converted_series = self.process_column(col, data)
+                data_types[col_name] = dtype
+                data[col_name] = converted_series
+
+        # Generate type conversion report
+        report = pd.DataFrame(list(data_types.items()), columns=['Column', 'Type'])
+        report.to_csv(report_path, index=False)
+        self.logger.info(f"Type conversion report saved to {report_path}")
+
+        return data
+
+    def get_category_mapping(self) -> Dict[str, Dict[int, str]]:
+        """
+        Get the mapping of categorical codes to original categories.
+
+        Returns:
+            Dict[str, Dict[int, str]]: Mapping for each categorical column.
+        """
+        return self.series_mapping
+
+```
+
+"Process_Data.py"
+
+```
+# Process_Data.py
+
+import pandas as pd
+import os
+from src.data_processing import DtypeDetector
+  # Ensure dtype_detector.py is in the same directory or PYTHONPATH
+import logging
+from typing import Optional, Dict, Any, Tuple
+
+class DataProcessor:
+    def __init__(
+        self,
+        input_filepath: str = 'Data.csv',
+        output_filepath: str = 'Processed_Data.csv',
+        report_path: str = 'Type_Conversion_Report.csv',
+        return_category_mappings: bool = True,
+        mapping_directory: str = 'Category_Mappings',
+        parallel_processing: bool = False,
+        date_threshold: float = 0.6,
+        numeric_threshold: float = 0.9,
+        factor_threshold_ratio: float = 0.2,
+        factor_threshold_unique: int = 500,
+        dayfirst: bool = True,
+        log_level: str = 'INFO',
+        log_file: Optional[str] = None,
+        convert_factors_to_int: bool = True,
+        date_format: Optional[str] = '%d-%m-%Y',  
+        save_type: str = 'csv' 
+    ):
+        """
+        Initialize the DataProcessor with file paths and configuration parameters.
+
+        Parameters:
+            ... [Existing Parameters] ...
+            date_format (Optional[str]): Desired date format for output (e.g., '%d-%m-%Y'). 
+                If specified, date columns will be formatted as strings in this format.
+        """
+        # Assigning file paths and configurations
+        self.input_filepath = input_filepath
+        self.output_filepath = output_filepath
+        self.report_path = report_path
+        self.return_category_mappings = return_category_mappings
+        self.mapping_directory = mapping_directory
+        self.parallel_processing = parallel_processing
+        self.save_type = save_type
+
+        # Initialize the DtypeDetector with provided thresholds and configurations
+        self.detector = DtypeDetector(
+            date_threshold=date_threshold,
+            numeric_threshold=numeric_threshold,
+            factor_threshold_ratio=factor_threshold_ratio,
+            factor_threshold_unique=factor_threshold_unique,
+            dayfirst=dayfirst,
+            log_level=log_level,
+            log_file=log_file,
+            convert_factors_to_int=convert_factors_to_int,
+            date_format=date_format  # **Pass the New Parameter**
+        )
+
+    def process(self):
+        """
+        Execute the data processing workflow:
+            1. Read and clean the input CSV file.
+            2. Determine and convert column data types.
+            3. Generate and save a type conversion report.
+            4. Save the processed data to the output CSV file.
+            5. Optionally, save category mappings for 'factor' columns.
+        """
+        try:
+            # Attempt to process the dataframe with the specified parallel processing option
+            processed_data = self.detector.process_dataframe(
+                filepath=self.input_filepath,
+                use_parallel=self.parallel_processing,
+                report_path=self.report_path
+            )
+            print(processed_data.dtypes)
+        except Exception as e:
+            # If parallel processing fails, attempt sequential processing
+            print("Unable to use parallel processing, trying without parallel processing.")
+            self.detector.logger.warning(f"Parallel processing failed: {e}")
+            try:
+                processed_data = self.detector.process_dataframe(
+                    filepath=self.input_filepath,
+                    file_type = self.save_type,
+                    use_parallel=False,
+                    report_path=self.report_path
+                )
+            except Exception as e:
+                # If sequential processing also fails, log the error and exit
+                print(f"Error processing data: {e}")
+                self.detector.logger.error(f"Error processing data: {e}")
+                return
+
+
+        if self.save_type == 'csv':
+            #---------------------------------------------------------------------------
+            # Save the processed data to the specified output CSV file
+            try:
+                processed_data.to_csv(self.output_filepath, index=False)
+                self.detector.logger.info(f"Processed data saved to {self.output_filepath}")
+            except Exception as e:
+                self.detector.logger.error(f"Failed to save processed data: {e}")
+                print(f"Failed to save processed data: {e}")
+            #---------------------------------------------------------------------------
+
+        elif self.save_type == 'pickle':
+            #---------------------------------------------------------------------------
+            # Save the processed data to the specified output Pickle file
+            try:
+                processed_data.to_pickle(self.output_filepath)
+                self.detector.logger.info(f"Processed data saved to {self.output_filepath}")
+            except Exception as e:
+                self.detector.logger.error(f"Failed to save processed data: {e}")
+                print(f"Failed to save processed data: {e}")
+            #---------------------------------------------------------------------------
+
+        # If configured to return category mappings, save them
+        if self.return_category_mappings:
+            self.save_category_mappings()
+
+        return processed_data
+        
+
+    def save_category_mappings(self):
+        """
+        Save category mappings for 'factor' columns to the specified directory.
+        Each mapping is saved as a separate CSV file named '<Column_Name>_mapping.csv'.
+        """
+        try:
+            # Create the mapping directory if it doesn't exist
+            os.makedirs(self.mapping_directory, exist_ok=True)
+            self.detector.logger.debug(f"Mapping directory '{self.mapping_directory}' is ready.")
+        except Exception as e:
+            self.detector.logger.error(f"Failed to create mapping directory '{self.mapping_directory}': {e}")
+            print(f"Failed to create mapping directory '{self.mapping_directory}': {e}")
+            return
+
+        # Remove existing mapping files to avoid duplication or outdated mappings
+        try:
+            for file in os.listdir(self.mapping_directory):
+                file_path = os.path.join(self.mapping_directory, file)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    self.detector.logger.debug(f"Removed existing mapping file '{file_path}'.")
+        except Exception as e:
+            self.detector.logger.error(f"Failed to clean mapping directory '{self.mapping_directory}': {e}")
+            print(f"Failed to clean mapping directory '{self.mapping_directory}': {e}")
+            return
+
+        # Retrieve category mappings from the DtypeDetector
+        category_mappings = self.detector.get_category_mapping()
+
+        # Save each category mapping to a separate CSV file
+        if category_mappings:
+            for col, mapping in category_mappings.items():
+                try:
+                    # Convert the mapping dictionary to a DataFrame for easier CSV export
+                    mapping_df = pd.DataFrame(list(mapping.items()), columns=['Code', 'Category'])
+                    # Define the mapping file path
+                    mapping_filepath = os.path.join(self.mapping_directory, f"{col}_mapping.csv")
+
+                    # Save the mapping DataFrame to CSV
+                    mapping_df.to_csv(mapping_filepath, index=False)
+                    self.detector.logger.info(f"Category mapping for '{col}' saved to '{mapping_filepath}'")
+                except Exception as e:
+                    self.detector.logger.error(f"Failed to save category mapping for '{col}': {e}")
+                    print(f"Failed to save category mapping for '{col}': {e}")
+        else:
+            self.detector.logger.info("No category mappings to save.")
+
+```
+
+"__init__.py"
+
+```
+# src/data_processing/__init__.py
+
+from .Detect_Dtypes import DtypeDetector
+from .Process_Data import DataProcessor
+```
+
+"geocoding.py"
+
+```
+# utils/geocoding.py
+
+import os
+import re
+import hashlib
+import random
+import string
+import pandas as pd
+import geopandas as gpd
+import requests
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut
+import spacy
+import logging
+import subprocess
+import sys
+import sqlite3
+import time
+import pycountry_convert as pc  # Added for continent mapping
+from src.config import LOGS_DIR, GEOCACHE_DB
+
+# Initialize logging
+logging.basicConfig(level=logging.INFO, filename=os.path.join(LOGS_DIR, 'app.log'), format='%(asctime)s %(levelname)s:%(message)s')
+
+# Initialize spaCy
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+    nlp = spacy.load("en_core_web_sm")
+
+# Initialize geolocator with increased timeout and user agent
+GEOCODER_USER_AGENT = os.getenv('GEOCODER_USER_AGENT', 'location_data_geocoding_tool')
+geolocator = Nominatim(user_agent=GEOCODER_USER_AGENT, timeout=10)
+
+# Initialize or connect to the SQLite database for caching
+conn = sqlite3.connect(GEOCACHE_DB, check_same_thread=False)
+cursor = conn.cursor()
+
+# Create a table for forward geocoding cache if it doesn't exist
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS geocache (
+    location TEXT PRIMARY KEY,
+    latitude REAL,
+    longitude REAL
+)
+''')
+
+# Create a table for reverse geocoding cache if it doesn't exist
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS reverse_geocache (
+    lat REAL,
+    lon REAL,
+    granularity TEXT,
+    value TEXT,
+    PRIMARY KEY (lat, lon, granularity)
+)
+''')
+
+conn.commit()
+
+
+######################################################################
+
+
+
+def detect_geographical_columns(df: pd.DataFrame) -> list:
+    """Detect columns that likely contain geographical data based on keywords."""
+    # Keywords that indicate geographical information
+    geo_keywords = ['city', 'country', 'suburb', 'region', 'state', 'province', 'address', 'location', 'place', 'geo', 'zipcode', 'postal', 'district', 'town', 'name']
+    # List to store the names of columns that likely contain geographical data
+    geo_columns = []
+    # Loop through columns in the DataFrame
+    for col in df.columns:
+        # Skip numerical columns
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        # Check if any keyword appears in the column name (case insensitive)
+        for keyword in geo_keywords:
+            if keyword.lower() in col.lower():
+                geo_columns.append(col)
+                break
+
+    return geo_columns
+
+#####################################################################
+
+
+def extract_gpe_entities(text):
+    """Extract GPE entities using spaCy NER."""
+    try:
+        doc = nlp(text)
+        return [ent.text for ent in doc.ents if ent.label_ == "GPE"]
+    except Exception as e:
+        logging.error(f"Error extracting GPE entities from text '{text}': {e}")
+        return []
+
+#####################################################################
+
+
+def geocode_location(location):
+    """Geocode a single location string."""
+    try:
+        loc = geolocator.geocode(location)
+        if loc:
+            logging.info(f"Geocoded '{location}': Latitude={loc.latitude}, Longitude={loc.longitude}")
+            return {
+                'latitude': loc.latitude,
+                'longitude': loc.longitude
+            }
+        else:
+            logging.warning(f"Geocoding returned no result for location: '{location}'")
+            return {'latitude': None, 'longitude': None}
+    except GeocoderTimedOut:
+        logging.error(f"Geocoding timed out for location: '{location}'")
+        return {'latitude': None, 'longitude': None}
+    except Exception as e:
+        logging.error(f"Error geocoding location '{location}': {e}")
+        return {'latitude': None, 'longitude': None}
+
+#####################################################################
+
+def geocode_location_with_cache(location):
+    """Geocode a location with caching using SQLite."""
+    try:
+        cursor.execute("SELECT latitude, longitude FROM geocache WHERE location = ?", (location,))
+        result = cursor.fetchone()
+
+        if result:
+            logging.info(f"Cache hit for location '{location}'")
+            return {
+                'latitude': result[0],
+                'longitude': result[1]
+            }
+        else:
+            logging.info(f"Cache miss for location '{location}'. Geocoding...")
+            geocoded = geocode_location(location)
+            cursor.execute('''
+                INSERT INTO geocache (location, latitude, longitude)
+                VALUES (?, ?, ?)
+            ''', (
+                location,
+                geocoded['latitude'],
+                geocoded['longitude']
+            ))
+            conn.commit()
+            return geocoded
+    except Exception as e:
+        logging.error(f"Error accessing cache for location '{location}': {e}")
+        return {'latitude': None, 'longitude': None}
+
+
+
+def perform_geocoding(data: pd.DataFrame, selected_geo_columns: list, session_state, progress_bar, status_text) -> pd.DataFrame:
+
+    """
+    Perform geocoding on the selected columns of the DataFrame.
+
+    Args:
+        data (pd.DataFrame): The input DataFrame.
+        selected_geo_columns (list): Columns selected for geocoding.
+        session_state: Streamlit session state.
+        progress_bar: Streamlit progress bar object.
+        status_text: Streamlit status text object.
+
+    Returns:
+        pd.DataFrame: DataFrame with added latitude and longitude columns.
+    """
+    geocoded_df = data.copy()
+    # Collect all unique locations across selected columns
+    unique_locations = set()
+    for column in selected_geo_columns:
+        unique_locations.update(geocoded_df[column].dropna().unique())
+
+    unique_locations = list(unique_locations)
+    total_locations = len(unique_locations)
+
+    if total_locations == 0:
+        raise ValueError("No locations found in the selected columns.")
+
+    # Clear previous geocoded data
+    session_state.geocoded_dict = {}
+
+    for idx, loc in enumerate(unique_locations):
+        geocoded = interpret_location(loc)
+        session_state.geocoded_dict[loc] = geocoded
+
+        # Update progress bar
+        progress = (idx + 1) / total_locations
+        progress = min(progress, 1.0)
+        progress_bar.progress(progress)
+        status_text.text(f"Geocoding {idx + 1}/{total_locations} locations...")
+
+        # Respect Nominatim's rate limit: 1 request per second
+        time.sleep(1)
+
+    # Apply geocoded results to the dataframe
+    for column in selected_geo_columns:
+        # Add Latitude and Longitude
+        geocoded_df[f'Latitude from {column}'] = geocoded_df[column].apply(
+            lambda x: session_state.geocoded_dict.get(x, {}).get('latitude', None) if pd.notnull(x) else None
+        )
+        geocoded_df[f'Longitude from {column}'] = geocoded_df[column].apply(
+            lambda x: session_state.geocoded_dict.get(x, {}).get('longitude', None) if pd.notnull(x) else None
+        )
+
+    return geocoded_df
+
+#####################################################################
+
+def interpret_location(text):
+    """Interpret location using NER and geocoding with cache."""
+    try:
+        gpe_entities = extract_gpe_entities(text)
+        if gpe_entities:
+            # Assume the first GPE entity is the relevant location
+            location_query = f"{gpe_entities[0]}"
+            geocoded = geocode_location_with_cache(location_query)
+        else:
+            # Fallback to full text geocoding
+            location_query = f"{text}"
+            geocoded = geocode_location_with_cache(location_query)
+
+        return geocoded  # Return the entire geocoded dict
+    except Exception as e:
+        logging.error(f"Error interpreting location '{text}': {e}")
+        return {'latitude': None, 'longitude': None}
+
+
+def close_cache_connection():
+    """Close the SQLite cache connection."""
+    try:
+        conn.close()
+        logging.info("Cache connection closed.")
+    except Exception as e:
+        logging.error(f"Error closing cache connection: {e}")
+
+#####################################################################
+
+def reverse_geocode_with_cache(lat, lon, granularity):
+    """Reverse geocode latitude and longitude with caching."""
+    try:
+        # Round the coordinates to 5 decimal places to improve cache hits
+        lat_rounded = round(lat, 5)
+        lon_rounded = round(lon, 5)
+
+        cursor.execute('''SELECT value FROM reverse_geocache WHERE lat = ? AND lon = ? AND granularity = ?''',
+                       (lat_rounded, lon_rounded, granularity))
+        result = cursor.fetchone()
+
+        if result:
+            logging.info(f"Reverse geocode cache hit for ({lat_rounded}, {lon_rounded}) at granularity '{granularity}'")
+            return result[0]
+        else:
+            # Perform reverse geocoding
+            try:
+                location = geolocator.reverse((lat_rounded, lon_rounded), exactly_one=True)
+                if location and location.raw and 'address' in location.raw:
+                    address = location.raw['address']
+                    value = None
+
+                    if granularity == 'address':
+                        value = location.address
+                    elif granularity == 'suburb':
+                        value = address.get('suburb') or address.get('neighbourhood') or address.get('hamlet') or address.get('village')
+                    elif granularity == 'city':
+                        value = address.get('city') or address.get('town') or address.get('municipality')
+                    elif granularity == 'state':
+                        value = address.get('state') or address.get('region')
+                    elif granularity == 'country':
+                        value = address.get('country')
+                    elif granularity == 'continent':
+                        country = address.get('country')
+                        if country:
+                            try:
+                                country_code = pc.country_name_to_country_alpha2(country, cn_name_format="default")
+                                continent_code = pc.country_alpha2_to_continent_code(country_code)
+                                continent_name = pc.convert_continent_code_to_continent_name(continent_code)
+                                value = continent_name
+                            except Exception as e:
+                                logging.error(f"Error converting country '{country}' to continent: {e}")
+                                value = 'Unknown'
+                        else:
+                            value = 'Unknown'
+                    else:
+                        value = 'Unknown'  # Assign 'Unknown' for unsupported granularity
+                else:
+                    value = 'Missing'  # Assign 'Missing' if reverse geocoding fails
+            except Exception as e:
+                logging.error(f"Error in reverse geocoding for ({lat}, {lon}) with granularity '{granularity}': {e}")
+                value = 'Missing'
+
+            # Store in cache
+            try:
+                cursor.execute('''INSERT OR REPLACE INTO reverse_geocache (lat, lon, granularity, value) VALUES (?, ?, ?, ?)''',
+                               (lat_rounded, lon_rounded, granularity, value))
+                conn.commit()
+                logging.info(f"Reverse geocoded ({lat_rounded}, {lon_rounded}) at granularity '{granularity}': {value}")
+            except Exception as e:
+                logging.error(f"Error inserting reverse geocode into cache for ({lat_rounded}, {lon_rounded}) at granularity '{granularity}': {e}")
+
+            return value
+    except Exception as e:
+        logging.error(f"Error accessing reverse geocode cache for ({lat}, {lon}) at granularity '{granularity}': {e}")
+        return 'Missing'
+    
+#####################################################################
+
+def generate_granular_location(data: pd.DataFrame, granularity: str, session_state, progress_bar, status_text, column) -> pd.DataFrame:
+    """
+    Generate a granular location column based on the specified granularity.
+
+    Args:
+        data (pd.DataFrame): The geocoded DataFrame.
+        granularity (str): The level of granularity (e.g., address, suburb).
+        session_state: Streamlit session state.
+        progress_bar: Streamlit progress bar object.
+        status_text: Streamlit status text object.
+        column (str): The name of the granular location column to be created.
+
+    Returns:
+        pd.DataFrame: DataFrame with the new granular location column added.
+    """
+    
+    # Convert the column to string to avoid issues with categorical dtype
+    data[column] = data[column].astype(str)
+
+    # Identify latitude and longitude columns
+    lat_cols = [col for col in data.columns if col.startswith('Latitude from')]
+    lon_cols = [col for col in data.columns if col.startswith('Longitude from')]
+
+    if not lat_cols or not lon_cols:
+        raise ValueError("No latitude and longitude columns found.")
+
+    # Use the first pair of latitude and longitude columns
+    lat_col = lat_cols[0]
+    lon_col = lon_cols[0]
+
+    unique_coords = data[[lat_col, lon_col]].dropna().drop_duplicates()
+    total_unique = len(unique_coords)
+
+    if total_unique == 0:
+        raise ValueError("No valid (latitude, longitude) pairs found.")
+
+    # Collect granular data
+    granular_data = []
+
+    for count, (idx, row) in enumerate(unique_coords.iterrows()):
+        lat = row[lat_col]
+        lon = row[lon_col]
+        value = reverse_geocode_with_cache(lat, lon, granularity)
+        if not value:
+            value = "Missing"  # Fill missing values
+        granular_data.append({lat_col: lat, lon_col: lon, column: value})
+
+        # Update progress
+        progress = (count + 1) / total_unique
+        progress = min(progress, 1.0)
+        progress_bar.progress(progress)
+        status_text.text(f"Reverse Geocoding {count + 1}/{total_unique} unique coordinate sets...")
+
+        # Respect Nominatim's rate limit: 1 request per second
+        time.sleep(1)
+    
+    # Create a DataFrame from the granular data
+    granular_data = pd.DataFrame(granular_data)
+
+    # if combination of lat and lon for granular data is in data, then replace the respective "column" with the value
+    for idx, row in granular_data.iterrows():
+        data.loc[(data[lat_col] == row[lat_col]) & (data[lon_col] == row[lon_col]), column] = row[column]
+
+    #turn the column into a category
+    data[column] = data[column].astype('category')
+
+    return data
+
+#####################################################################
+
+def prepare_map_data(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare data for mapping by extracting all latitude and longitude pairs.
+
+    Args:
+        data (pd.DataFrame): The geocoded DataFrame.
+
+    Returns:
+        pd.DataFrame: DataFrame containing 'lat' and 'lon' columns for mapping.
+    """
+    # Dynamically identify all latitude and longitude columns
+    latitude_cols = [col for col in data.columns if col.startswith('Latitude from')]
+    longitude_cols = [col for col in data.columns if col.startswith('Longitude from')]
+
+    if not latitude_cols or not longitude_cols:
+        raise ValueError("Geocoded data does not contain any 'Latitude from <column>' and 'Longitude from <column>' columns.")
+
+    # Prepare a DataFrame to hold all latitude and longitude pairs
+    map_data = pd.DataFrame(columns=['lat', 'lon'])
+
+    for lat_col in latitude_cols:
+        # Extract the original column name
+        original_column = lat_col.split('Latitude from ')[1]
+        lon_col = f'Longitude from {original_column}'
+
+        if lon_col not in longitude_cols:
+            logging.warning(f"Missing corresponding longitude column for {lat_col}. Skipping this pair.")
+            continue
+
+        # Extract data
+        temp_df = data[[lat_col, lon_col]].copy()
+        temp_df = temp_df.rename(columns={
+            lat_col: 'lat',
+            lon_col: 'lon'
+        })
+
+        temp_df = temp_df[['lat', 'lon']].dropna(subset=['lat', 'lon'])
+
+        map_data = pd.concat([map_data, temp_df], ignore_index=True)
+
+    if map_data.empty:
+        raise ValueError("No valid location data available to display on the map.")
+
+    return map_data
+
+
+# Ensure the cache connection is closed when the program exits
+import atexit
+atexit.register(close_cache_connection)
+
+```
+
+"__init__.py"
+
+```
+# src/location_granularizer/__init__.py
+
+from .geocoding import (
+    extract_gpe_entities,
+    interpret_location,
+    geocode_location_with_cache,
+    detect_geographical_columns,
+    reverse_geocode_with_cache,
+    perform_geocoding,
+    generate_granular_location,
+    prepare_map_data,
+    close_cache_connection
+)
+```
+
+"utils.py"
+
+```
+# utils.py
+
+import streamlit as st
+import pandas as pd
+import tempfile
+import os
+from src.data_processing import DataProcessor
+import matplotlib.pyplot as plt
+import traceback
+from src.binning import DensityPlotter
+from src.binning import DataIntegrityAssessor
+from src.binning import UniqueBinIdentifier
+from src.config import PROCESSED_DATA_DIR, REPORTS_DIR, PLOTS_DIR, UNIQUE_IDENTIFICATIONS_DIR, CAT_MAPPING_DIR, DATA_DIR
+
+
+def hide_streamlit_style():
+    """
+    Hides Streamlit's default menu and footer for a cleaner interface.
+    """
+    hide_style = """
+        <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        </style>
+        """
+    st.markdown(hide_style, unsafe_allow_html=True)
+
+def run_processing(save_type='csv', output_filename='Processed_Data.csv', file_path='Data.csv'):
+    """
+    Initializes and runs the data processor, saving outputs to the designated directories.
+    """
+    try:
+        # Define output file paths
+        output_filepath = os.path.join(PROCESSED_DATA_DIR, output_filename)
+        report_path = os.path.join(REPORTS_DIR, 'Type_Conversion_Report.csv')
+        
+        processor = DataProcessor(
+            input_filepath=os.path.join(DATA_DIR, file_path),
+            output_filepath=output_filepath,
+            report_path=report_path,
+            return_category_mappings=True,
+            mapping_directory=CAT_MAPPING_DIR,
+            parallel_processing=False,
+            date_threshold=0.6,
+            numeric_threshold=0.9,
+            factor_threshold_ratio=0.2,
+            factor_threshold_unique=1000,
+            dayfirst=True,
+            log_level='INFO',
+            log_file=None,
+            convert_factors_to_int=True,
+            date_format=None,  # Keep as None to retain datetime dtype
+            save_type=save_type
+        )
+        processed_data = processor.process()
+        return processed_data
+        
+    except Exception as e:
+        st.error(f"Error during data processing: {e}")
+        st.stop()
+
+def load_data(file_type, uploaded_file):
+    """
+    Loads the uploaded file into a Pandas DataFrame without any processing.
+
+    Parameters:
+        file_type (str): Type of the uploaded file ('csv' or 'pkl').
+        uploaded_file (UploadedFile): The uploaded file object.
+
+    Returns:
+        pd.DataFrame: The loaded DataFrame.
+        str: Error message if any, else None.
+    """
+    if uploaded_file is None:
+        return None, "No file uploaded!"
+
+    try:
+        # Determine the appropriate file extension
+        file_extension = {
+            "pkl": "pkl",
+            "csv": "csv"
+        }.get(file_type, "csv")  # Default to 'csv' if type is unrecognized
+
+        # Create a temporary file with the correct extension
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as tmp_file:
+            tmp_file.write(uploaded_file.getbuffer())
+            temp_file_path = tmp_file.name
+
+        # Read the data into a DataFrame
+        if file_type == "pkl":
+            Data = pd.read_pickle(temp_file_path)
+        elif file_type == "csv":
+            Data = pd.read_csv(temp_file_path)
+        else:
+            return None, "Unsupported file type!"
+
+        # Clean up temporary file
+        os.remove(temp_file_path)
+
+        return Data, None
+    except Exception as e:
+        return None, f"Error loading data: {e}"
+
+def align_dataframes(original_df, binned_df):
+    """
+    Ensures both DataFrames have the same columns.
+    """
+    try:
+        # Identify columns that exist in the original DataFrame but not in the binned DataFrame
+        missing_in_binned = original_df.columns.difference(binned_df.columns)
+        
+        # Retain all original columns that were not binned in the binned DataFrame
+        for column in missing_in_binned:
+            binned_df[column] = original_df[column]
+        
+        # Ensure columns are ordered the same way
+        binned_df = binned_df[original_df.columns]
+        
+        return original_df, binned_df
+    except Exception as e:
+        st.error(f"Error aligning dataframes: {e}")
+        st.stop()
+
+def save_dataframe(df, file_type, filename, subdirectory):
+    """
+    Saves the DataFrame to the specified file type within a subdirectory.
+    """
+    try:
+        
+        # Determine the full path
+        if subdirectory == "processed_data":
+            dir_path = PROCESSED_DATA_DIR
+        elif subdirectory == "reports":
+            dir_path = REPORTS_DIR
+        elif subdirectory == "unique_identifications":
+            dir_path = UNIQUE_IDENTIFICATIONS_DIR
+        elif subdirectory == "plots":
+            dir_path = PLOTS_DIR
+        else:
+            raise ValueError("Unsupported subdirectory for saving DataFrame.")
+
+        file_path = os.path.join(dir_path, filename)
+
+        if file_type == 'csv':
+            df.to_csv(file_path, index=False)
+        elif file_type == 'pkl':
+            df.to_pickle(file_path)
+        else:
+            raise ValueError("Unsupported file type for saving.")
+        
+        return file_path  # Return the path for further use if needed
+    except Exception as e:
+        st.error(f"Error saving DataFrame: {e}")
+        st.stop()
+
+def load_dataframe(file_path, file_type):
+    """
+    Loads a DataFrame from the specified file path and type.
+    """
+    try:
+        if file_type == 'csv':
+            return pd.read_csv(file_path)
+        elif file_type == 'pkl':
+            return pd.read_pickle(file_path)
+        else:
+            raise ValueError("Unsupported file type for loading.")
+    except Exception as e:
+        st.error(f"Error loading DataFrame: {e}")
+        st.stop()
+
+def get_binning_configuration(Data, selected_columns_binning):
+    """
+    Generates binning configuration sliders for selected columns.
+    """
+    bins = {}
+    st.markdown("### 📏 Binning Configuration")
+
+    for column in selected_columns_binning:
+        max_bins = Data[column].nunique()
+        min_bins = 2 if max_bins >= 2 else 1  # At least 2 bins if possible
+        default_bins = min(10, max_bins) if max_bins >= 2 else 1  # Default to 10 or max_unique if lower
+
+        bins[column] = st.slider(
+            f'📏 {column}', 
+            min_value=1, 
+            max_value=max_bins, 
+            value=default_bins, 
+            key=f'bin_slider_{column}'
+        )
+    
+    return bins
+
+
+def plot_entropy_and_display(assessor, plots_dir):
+    """
+    Plots the entropy and displays it in Streamlit.
+
+    Args:
+        assessor (DataIntegrityAssessor): The integrity assessor instance.
+        plots_dir (str): Directory to save the entropy plot.
+    """
+    st.markdown("### 📈 Entropy")
+    try:
+        fig_entropy = assessor.plot_entropy(figsize=(15, 4))  # Create the entropy plot
+        # Save the entropy plot
+        entropy_plot_path = os.path.join(plots_dir, 'entropy_plot.png')
+        fig_entropy.savefig(entropy_plot_path, bbox_inches='tight')
+        # Display in Streamlit before closing
+        st.pyplot(fig_entropy)  # to display
+        plt.close(fig_entropy)  # Close the figure to free memory
+    except Exception as e:
+        st.error(f"Error plotting entropy: {e}")
+        st.error(traceback.format_exc())  # Detailed error log
+
+def plot_density_plots_and_display(original_df, binned_df, selected_columns_binning, plots_dir):
+    """
+    Plots the density plots for original and binned data and displays them in Streamlit.
+
+    Args:
+        original_df (pd.DataFrame): Original DataFrame for assessment.
+        binned_df (pd.DataFrame): Binned DataFrame for assessment.
+        selected_columns_binning (list): Columns selected for binning.
+        plots_dir (str): Directory to save the density plots.
+    """
+    st.markdown("### 📈 Density Plots")
+    if len(selected_columns_binning) > 1:
+        density_tab1, density_tab2 = st.tabs(["Original Data", "Binned Data"])
+        
+        with density_tab1:
+            try:
+                plotter_orig = DensityPlotter(
+                    dataframe=original_df,  # Use original categorical data
+                    category_columns=selected_columns_binning,
+                    figsize=(15, 4),                     
+                    save_path=None,  # We'll handle saving manually
+                    plot_style='ticks'
+                )
+                
+                fig_orig = plotter_orig.plot_grid()
+                # Save the plot
+                original_density_plot_path = os.path.join(plots_dir, 'original_density_plots.png')
+                fig_orig.savefig(original_density_plot_path, bbox_inches='tight')
+                # Display before closing
+                st.pyplot(fig_orig)
+                plt.close(fig_orig)
+            except Exception as e:
+                st.error(f"Error plotting original data density: {e}")
+                st.error(traceback.format_exc())  # Detailed error log
+
+        with density_tab2:
+            try:
+                plotter_binned = DensityPlotter(
+                    dataframe=binned_df,  # Use user-specified binned data
+                    category_columns=selected_columns_binning,
+                    figsize=(15, 4),                     
+                    save_path=None,  # We'll handle saving manually
+                    plot_style='ticks'
+                )
+                fig_binned = plotter_binned.plot_grid()
+                # Save the plot
+                binned_density_plot_path = os.path.join(plots_dir, 'binned_density_plots.png')
+                fig_binned.savefig(binned_density_plot_path, bbox_inches='tight')
+                # Display before closing
+                st.pyplot(fig_binned)
+                plt.close(fig_binned)
+            except Exception as e:
+                st.error(f"Error plotting binned data density: {e}")
+                st.error(traceback.format_exc())  # Detailed error log
+    else:
+        # Print a message if only one column is selected
+        st.info("🔄 **Please select more than one column to display density plots.**")
+
+def handle_download_binned_data(data, file_type_download='csv', save_dataframe_func=save_dataframe):
+    """
+    Handles the download functionality for binned data.
+
+    Args:
+        data (pd.DataFrame): The binned DataFrame to be downloaded.
+        file_type_download (str): The selected file type for download ('csv' or 'pkl').
+        save_dataframe_func (callable): Function to save the DataFrame.
+        plots_dir (str): Directory to save any related plots if necessary.
+    """
+
+    st.markdown("### 💾 Download Binned Data")
+    try:
+        if file_type_download == 'csv':
+            binned_csv = data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Binned Data as CSV",
+                data=binned_csv,
+                file_name='binned_data.csv',
+                mime='text/csv',
+            )
+        elif file_type_download == 'pkl':
+            # Save pickle to the 'processed_data' directory
+            pickle_filename = 'binned_data.pkl'
+            pickle_path = save_dataframe_func(data, 'pkl', pickle_filename, 'processed_data')
+            
+            with open(pickle_path, 'rb') as f:
+                binned_pkl = f.read()
+            
+            st.download_button(
+                label="📥 Download Binned Data as Pickle",
+                data=binned_pkl,
+                file_name='binned_data.pkl',
+                mime='application/octet-stream',
+            )
+    except Exception as e:
+        st.error(f"Error during data download: {e}")
+        st.error(traceback.format_exc())  # Detailed error log
+
+def handle_integrity_assessment(original_df, binned_df, plots_dir):
+    """
+    Handles the integrity assessment process, including generating reports and plotting entropy.
+
+    Args:
+        original_df (pd.DataFrame): Original DataFrame for assessment.
+        binned_df (pd.DataFrame): Binned DataFrame for assessment.
+        plots_dir (str): Directory to save plots.
+
+    Returns:
+        None
+    """
+
+    try:
+        assessor = DataIntegrityAssessor(original_df=original_df, binned_df=binned_df)
+        assessor.assess_integrity_loss()
+        report = assessor.generate_report()
+        
+        # Save the report to the 'reports' directory
+        report_filename = 'Integrity_Loss_Report.csv'
+        save_dataframe(report, 'csv', report_filename, 'reports')
+        
+        overall_loss = assessor.get_overall_loss()
+
+        st.markdown("### 📄 Integrity Loss Report")
+        st.dataframe(report)
+        st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
+
+        # Plot and display entropy using utility function
+        plot_entropy_and_display(assessor, plots_dir)
+
+
+    except Exception as e:
+        st.error(f"Error during integrity assessment: {e}")
+        st.error(traceback.format_exc())  # Detailed error log
+    
+    
+
+def handle_unique_identification_analysis(original_df, binned_df, columns_list, min_comb_size, max_comb_size):
+    """
+    Handles the unique identification analysis process, including progress updates, result display, and downloads.
+
+    Args:
+        original_df (pd.DataFrame): Original DataFrame for analysis.
+        binned_df (pd.DataFrame): Binned DataFrame for analysis.
+        bin_columns_list (list): List of bin columns to consider.
+        min_comb_size (int): Minimum combination size.
+        max_comb_size (int): Maximum combination size.
+
+    Returns:
+        pd.DataFrame: Results of the unique identification analysis.
+    """
+    try:
+        with st.spinner('🔍 Analyzing unique identifications... This may take a while for large datasets.'):
+            
+            progress_bar = st.progress(0)
+            def update_progress(combination_counter, total_combinations):
+                progress = combination_counter / total_combinations
+                st.session_state.progress = min(progress, 1.0)
+                progress_bar.progress(st.session_state.progress)
+            
+            # Initialize the UniqueBinIdentifier
+            identifier = UniqueBinIdentifier(original_df=original_df, binned_df=binned_df)                    
+            # Perform unique identification analysis
+            results = identifier.find_unique_identifications(
+                min_comb_size=min_comb_size, 
+                max_comb_size=max_comb_size, 
+                columns=columns_list,
+                progress_callback=update_progress
+            )
+            progress_bar.empty()
+            
+            return results
+    except Exception as e:
+        st.error(f"Error during unique identification analysis: {e}")
+        st.error(traceback.format_exc())  # Detailed error log
+        return None
+
+def display_unique_identification_results(results):
+    """
+    Displays the unique identification analysis results and provides download options.
+
+    Args:
+        results (pd.DataFrame): Results of the unique identification analysis.
+
+    Returns:
+        None
+    """
+    if results is not None:
+        # Display the results
+        st.success("✅ Unique Identification Analysis Completed!")
+        st.write("📄 **Unique Identification Results:**")
+        st.dataframe(results) 
+        
+        # Save the results to 'unique_identifications' directory
+        unique_id_filename = 'unique_identifications.csv'
+        unique_id_path = save_dataframe(results, 'csv', unique_id_filename, 'unique_identifications')
+        
+        # Allow user to download the results
+        csv = results.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Results as CSV",
+            data=csv,
+            file_name='unique_identifications.csv',
+            mime='text/csv',
+        )
+
+```
+
+"__init__.py"
+
+```
+# src/utils/__init__.py
+
+from .utils import *
+```
+

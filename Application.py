@@ -4,9 +4,9 @@ import os
 import traceback
 import pandas as pd
 import streamlit as st
-
 # Import binning modules
 from src.binning import DataBinner
+from src.binning import KAnonymityBinner
 
 # Import utility functions
 from src.utils import (
@@ -19,6 +19,7 @@ from src.utils import (
     plot_entropy_and_display,
     plot_density_plots_and_display,
     handle_download_binned_data,
+    handle_download_k_binned_data,
     handle_integrity_assessment,
     handle_unique_identification_analysis,
     display_unique_identification_results
@@ -112,7 +113,7 @@ def update_session_state(key: str, value):
 def setup_page():
     """Configure the Streamlit page and apply custom styles."""
     st.set_page_config(
-        page_title="🛠️ Data Processing and Binning Application",
+        page_title="🛠️ De-Identification of Privileged Data (Generalisation Methodology)",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -293,7 +294,7 @@ def download_binned_data(data_full, data):
 
 def binning_tab():
     """Render the Binning Tab in the Streamlit app."""
-    st.header("📊 Binning")
+    st.header("📊 Manual Binning")
     
     processed_data = st.session_state.Processed_Data
     location_selected = set(st.session_state.Location_Selected_Columns)
@@ -655,6 +656,98 @@ def unique_identification_analysis_tab():
         st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
 
 # =====================================
+# K-Anonymity Binning Tab Functionality
+# =====================================
+
+def download_k_anon_binned_data(data_full, data):
+    """Handle downloading of the binned data."""
+    if data is not None and isinstance(data, pd.DataFrame):
+        # Add Streamlit option to select original or full data
+        k_download_choice = st.radio(
+            "Choose data to download:",
+            options=["Only Binned Columns", "Full Data"],
+            index=0,
+            key='k_anon_download_choice'
+        )
+        k_data_to_download = data_full if k_download_choice == "Full Data" else data
+    else:
+        k_data_to_download = None
+
+    if k_data_to_download is not None:
+        handle_download_k_binned_data(
+            data=k_data_to_download,
+            file_type_download=st.selectbox(
+                '📁 Download Format', 
+                ['csv', 'pkl'], 
+                index=0, 
+                key='k_anon_download_file_type_download'
+            ),
+            save_dataframe_func=save_dataframe
+        )
+
+def k_anonymity_binning_tab():
+
+    """Render the K-Anonymity Binning Tab in the Streamlit app."""
+    st.header("🔒 K-Anonymity Binning")
+
+    processed_data = st.session_state.Processed_Data
+
+    # Select columns to include in k-anonymity binning
+    available_columns = processed_data.select_dtypes(
+        include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]']
+    ).columns.tolist()
+
+    selected_columns_k_anonymity = st.multiselect(
+        'Select columns for k-anonymity binning',
+        options=available_columns,
+        default=[],
+        key='k_anonymity_columns_form'
+    )
+    update_session_state('K_Anonymity_Selected_Columns', selected_columns_k_anonymity)
+
+    if selected_columns_k_anonymity:
+        # Input for the desired k value
+        k_value = st.number_input(
+            'Set the value of k for k-anonymity',
+            min_value=2,
+            value=5,
+            step=1,
+            key='k_value_input'
+        )
+        update_session_state('K_Value', k_value)
+
+        if st.button("Start K-Anonymity Binning"):
+            try:
+                with st.spinner('Performing k-anonymity binning...'):
+                    # Initialize KAnonymityBinner and perform binning
+                    binner = KAnonymityBinner(
+                        data=processed_data[selected_columns_k_anonymity],
+                        k=k_value,
+                        method=st.session_state.Binning_Method.lower()
+                    )
+                    binned_data = binner.perform_binning()
+
+                    # Update GLOBAL_DATA with the binned columns
+                    st.session_state.GLOBAL_DATA[selected_columns_k_anonymity] = binned_data[selected_columns_k_anonymity]
+                    update_session_state('GLOBAL_DATA', st.session_state.GLOBAL_DATA)
+
+                    st.success("✅ K-Anonymity Binning completed successfully!")
+                    st.dataframe(binned_data.head())
+
+                    # Provide option to download the k-anonymity binned data
+                    download_k_anon_binned_data(binned_data, binned_data[selected_columns_k_anonymity])
+
+                    # Update GLOBAL_DATA with the binned columns
+                    st.session_state.GLOBAL_DATA[selected_columns_k_anonymity] = binned_data[selected_columns_k_anonymity]
+                    update_session_state('GLOBAL_DATA', st.session_state.GLOBAL_DATA)
+
+            except Exception as e:
+                st.error(f"Error during k-anonymity binning: {e}")
+                st.error(traceback.format_exc())
+    else:
+        st.info("🔄 **Please select at least one column for k-anonymity binning.**")
+
+# =====================================
 # Main Function
 # =====================================
 
@@ -691,9 +784,10 @@ def main():
 
     # Create Tabs
     tabs = st.tabs([
-        "📊 Binning", 
+        "📊 Manual Binning", 
         "📍 Location Data Geocoding Granulariser", 
-        "🔍 Unique Identification Analysis"
+        "🔍 Unique Identification Analysis",
+        "🔒 K-Anonymity Binning"  # Add the new tab here
     ])
 
     ######################
@@ -713,6 +807,12 @@ def main():
     ######################
     with tabs[2]:
         unique_identification_analysis_tab()
+
+    ######################
+    # K-Anonymity Binning Tab
+    ######################
+    with tabs[3]:
+        k_anonymity_binning_tab()
 
 # =====================================
 # Entry Point
