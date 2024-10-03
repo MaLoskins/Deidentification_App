@@ -1,10 +1,10 @@
-# Application Name
+# README FILE NEEDS TO BE UPDATED DO NOT USE FOR REFERENCE
 
 A comprehensive data processing and analysis application built with Streamlit, designed to facilitate data binning, integrity assessment, visualization, and unique identification analyses. This application provides a user-friendly web interface for uploading datasets, configuring binning options, and obtaining insightful reports and visualizations.
 
 ## Table of Contents
 
-- [Application Name](#application-name)
+- [README FILE NEEDS TO BE UPDATED DO NOT USE FOR REFERENCE](#readme-file-needs-to-be-updated-do-not-use-for-reference)
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
   - [Installation](#installation)
