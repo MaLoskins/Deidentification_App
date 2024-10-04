@@ -594,7 +594,7 @@ def unique_identification_analysis_tab():
 
     # Combine selections from Binning and Location Granulariser
     if st.session_state.Binning_Selected_Columns and st.session_state.Location_Selected_Columns:
-        granular_columns = st.session_state.Location_Selected_Columns 
+        granular_columns = st.session_state.Location_Selected_Columns
         selected_columns_uniquetab = st.session_state.Binning_Selected_Columns + granular_columns
         st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
     elif st.session_state.Binning_Selected_Columns:
@@ -618,39 +618,39 @@ def unique_identification_analysis_tab():
             st.info("🔄 **Please select columns in the Binning tab and/or generate granular location data to perform Unique Identification Analysis.**")
         else:
             # Verify that selected_columns_uniquetab exist in both ORIGINAL_DATA and GLOBAL_DATA
-            existing_columns = [
-                col for col in selected_columns_uniquetab 
-                if col in st.session_state.GLOBAL_DATA.columns and col in st.session_state.ORIGINAL_DATA.columns
-            ]
-            missing_in_global = [
-                col for col in selected_columns_uniquetab 
-                if col not in st.session_state.GLOBAL_DATA.columns
-            ]
-            missing_in_original = [
-                col for col in selected_columns_uniquetab 
-                if col not in st.session_state.ORIGINAL_DATA.columns
-            ]
+            existing_columns = [col for col in selected_columns_uniquetab if col in st.session_state.GLOBAL_DATA.columns and col in st.session_state.ORIGINAL_DATA.columns]
+            missing_in_global = [col for col in selected_columns_uniquetab if col not in st.session_state.GLOBAL_DATA.columns]
+            missing_in_original = [col for col in selected_columns_uniquetab if col not in st.session_state.ORIGINAL_DATA.columns]
 
             if missing_in_global or missing_in_original:
-                if missing_in_global:
-                    st.error(f"The following selected columns are missing from Global Data: {', '.join(missing_in_global)}. Please check your selections.")
-                if missing_in_original:
-                    st.error(f"The following selected columns are missing from Original Data: {', '.join(missing_in_original)}. Please check your selections.")
+                if missing_in_global: st.error(f"The following selected columns are missing from Global Data: {', '.join(missing_in_global)}. Please check your selections.")
+                if missing_in_original: st.error(f"The following selected columns are missing from Original Data: {', '.join(missing_in_original)}. Please check your selections.")
                 st.stop()
 
             # Proceed with the unique identification analysis
-            original_for_assessment = st.session_state.ORIGINAL_DATA[existing_columns].copy()
+            original_for_assessment = st.session_state.Processed_Data[existing_columns].copy()
             data_for_assessment = st.session_state.GLOBAL_DATA[existing_columns].copy()
 
             min_comb_size, max_comb_size, submit_button = unique_identification_section_ui(selected_columns_uniquetab)
 
             if submit_button:
                 perform_unique_identification_analysis(
-                    original_for_assessment=original_for_assessment.astype('category'),  # Categorize the original data regardless of its granularity
-                    data_for_assessment=data_for_assessment.astype('category'),          # Should already be categorized, but ensure categorization
+                    original_for_assessment=original_for_assessment.astype('category'),
+                    data_for_assessment=data_for_assessment.astype('category'),
                     selected_columns_uniquetab=existing_columns,
                     min_comb_size=min_comb_size,
                     max_comb_size=max_comb_size
+                )
+
+                # Perform integrity assessment
+                perform_integrity_assessment(original_for_assessment, data_for_assessment, existing_columns)
+
+                # Plot density distributions
+                plot_density_plots_and_display(
+                    original_for_assessment,
+                    data_for_assessment,
+                    existing_columns,
+                    PLOTS_DIR
                 )
     else:
         st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
@@ -784,35 +784,35 @@ def main():
 
     # Create Tabs
     tabs = st.tabs([
+        "🔒 K-Anonymity Binning",  
         "📊 Manual Binning", 
         "📍 Location Data Geocoding Granulariser", 
-        "🔍 Unique Identification Analysis",
-        "🔒 K-Anonymity Binning"  # Add the new tab here
+        "🔍 Unique Identification Analysis"
     ])
+    
+    ######################
+    # K-Anonymity Binning Tab
+    ######################
+    with tabs[0]:
+        k_anonymity_binning_tab()
 
     ######################
     # Binning Tab
     ######################
-    with tabs[0]:
+    with tabs[1]:
         binning_tab()
 
     ######################
     # Location Granulariser Tab
     ######################
-    with tabs[1]:
+    with tabs[2]:
         location_granulariser_tab()
 
     ######################
     # Unique Identification Analysis Tab
     ######################
-    with tabs[2]:
-        unique_identification_analysis_tab()
-
-    ######################
-    # K-Anonymity Binning Tab
-    ######################
     with tabs[3]:
-        k_anonymity_binning_tab()
+        unique_identification_analysis_tab()
 
 # =====================================
 # Entry Point

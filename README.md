@@ -1,414 +1,710 @@
-# README FILE NEEDS TO BE UPDATED DO NOT USE FOR REFERENCE
-
-A comprehensive data processing and analysis application built with Streamlit, designed to facilitate data binning, integrity assessment, visualization, and unique identification analyses. This application provides a user-friendly web interface for uploading datasets, configuring binning options, and obtaining insightful reports and visualizations.
+# Detailed Overview of the De-Identification Tool Application
 
 ## Table of Contents
 
-- [README FILE NEEDS TO BE UPDATED DO NOT USE FOR REFERENCE](#readme-file-needs-to-be-updated-do-not-use-for-reference)
+- [Detailed Overview of the De-Identification Tool Application](#detailed-overview-of-the-de-identification-tool-application)
   - [Table of Contents](#table-of-contents)
-  - [Features](#features)
-  - [Installation](#installation)
-  - [Usage](#usage)
-  - [Directory Structure](#directory-structure)
-  - [Detailed Documentation](#detailed-documentation)
+  - [Introduction](#introduction)
+  - [Codebase Structure](#codebase-structure)
+    - [Key Directories and Files:](#key-directories-and-files)
+  - [Application Pipelines](#application-pipelines)
+    - [Main Application Module (Application.py)](#main-application-module-applicationpy)
+    - [Data Flows](#data-flows)
+    - [Binning Module (src.binning)](#binning-module-srcbinning)
+    - [Data Processing Module (src.data\_processing)](#data-processing-module-srcdata_processing)
+    - [Location Granularizer Module (src.location\_granularizer)](#location-granularizer-module-srclocation_granularizer)
+    - [Utils Module (src.utils)](#utils-module-srcutils)
+    - [Data Types](#data-types)
+  - [Module Breakdown](#module-breakdown)
     - [1. Application.py](#1-applicationpy)
-    - [2. data\_binner.py](#2-data_binnerpy)
-    - [3. data\_integrity\_assessor.py](#3-data_integrity_assessorpy)
-    - [4. density\_plotter.py](#4-density_plotterpy)
-    - [5. Detect\_Dtypes.py](#5-detect_dtypespy)
-    - [6. Process\_Data.py](#6-process_datapy)
-    - [7. unique\_bin\_identifier.py](#7-unique_bin_identifierpy)
-    - [8. utils.py](#8-utilspy)
-  - [Additional Components](#additional-components)
-    - [A. `outputs` Directory](#a-outputs-directory)
-    - [B. `README.md`](#b-readmemd)
-    - [C. `requirements.txt`](#c-requirementstxt)
-  - [Pipeline Summary](#pipeline-summary)
-  - [Requirements](#requirements)
-  - [License](#license)
+    - [2. Configuration Module (`config.py`)](#2-configuration-module-configpy)
+    - [3. Binning Module (`src.binning`)](#3-binning-module-srcbinning)
+      - [`data_binner.py`](#data_binnerpy)
+      - [`k_anonymity_binner.py`](#k_anonymity_binnerpy)
+      - [`data_integrity_assessor.py`](#data_integrity_assessorpy)
+      - [`density_plotter.py`](#density_plotterpy)
+      - [`unique_bin_identifier.py`](#unique_bin_identifierpy)
+      - [`__init__.py`](#__init__py)
+    - [4. Data Processing Module (`src.data_processing`)](#4-data-processing-module-srcdata_processing)
+      - [`Detect_Dtypes.py`](#detect_dtypespy)
+      - [`Process_Data.py`](#process_datapy)
+      - [`__init__.py`](#__init__py-1)
+    - [5. Location Granularizer Module (`src.location_granularizer`)](#5-location-granularizer-module-srclocation_granularizer)
+      - [`geocoding.py`](#geocodingpy)
+      - [`__init__.py`](#__init__py-2)
+    - [6. Utilities Module (`src.utils`)](#6-utilities-module-srcutils)
+      - [`utils.py`](#utilspy)
+      - [`__init__.py`](#__init__py-3)
+  - [Application Workflow](#application-workflow)
+    - [1. Data Upload and Initial Processing](#1-data-upload-and-initial-processing)
+    - [2. Binning Processes](#2-binning-processes)
+      - [a. Manual Binning](#a-manual-binning)
+      - [b. K-Anonymity Binning](#b-k-anonymity-binning)
+    - [3. K-Anonymity Binning](#3-k-anonymity-binning)
+    - [4. Location Data Geocoding and Granularization](#4-location-data-geocoding-and-granularization)
+    - [5. Data Integrity Assessment](#5-data-integrity-assessment)
+    - [6. Density Plotting](#6-density-plotting)
+    - [7. Unique Identification Analysis](#7-unique-identification-analysis)
+  - [Session State Management](#session-state-management)
+  - [Inter-Module Interactions](#inter-module-interactions)
+    - [Binning Module (`src.binning`):](#binning-module-srcbinning-1)
+    - [Data Processing Module (`src.data_processing`):](#data-processing-module-srcdata_processing-1)
+    - [Location Granularizer Module (`src.location_granularizer`):](#location-granularizer-module-srclocation_granularizer-1)
+    - [Utilities Module (`src.utils`):](#utilities-module-srcutils)
+    - [Configuration Module (`config.py`):](#configuration-module-configpy)
+  - [Caching Mechanisms](#caching-mechanisms)
+  - [File and Directory Management](#file-and-directory-management)
+    - [Configuration (`config.py`):](#configuration-configpy)
+  - [Conclusion](#conclusion)
 
-## Features
+## Introduction
 
-- **User-Friendly Interface:** Built with Streamlit for an intuitive web-based experience.
-- **Flexible Binning:** Supports Quantile and Equal Width binning methods with customizable configurations.
-- **Data Integrity Assessment:** Evaluates the impact of binning on data entropy.
-- **Visualization:** Generates density and entropy plots for comprehensive data analysis.
-- **Unique Identification Analysis:** Determines the uniqueness of record combinations based on binned data.
-- **Comprehensive Reporting:** Provides detailed reports and downloadable processed data.
+The De-Identification Tool Application is a comprehensive data processing platform designed to anonymize sensitive datasets while preserving their analytical utility. Leveraging techniques such as binning, k-anonymity, and geocoding, the application ensures that individual records within a dataset cannot be re-identified, thereby safeguarding privacy. Additionally, it provides mechanisms for assessing data integrity post-processing and offers visualization tools to understand the impact of de-identification methods.
 
-## Installation
+## Codebase Structure
 
-1. **Clone the Repository**
+The application's codebase is organized systematically to promote modularity, maintainability, and scalability. Below is an overview of the repository's structure:
 
-   ```bash
-   git clone https://github.com/yourusername/your-repo.git
-   cd your-repo
-   ```
-
-2. **Create a Virtual Environment**
-
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. **Install Dependencies**
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Run the Application**
-
-   ```bash
-   streamlit run Application.py
-   ```
-
-## Usage
-
-1. **Upload Dataset:** Use the interface to upload a CSV or Pickle file.
-2. **Configure Binning:** Select the binning method and choose the columns to bin.
-3. **Process Data:** The application will process and bin the data based on your configurations.
-4. **Assess Integrity:** Review the integrity loss reports and entropy plots.
-5. **Visualize Data:** View density plots of original and binned data.
-6. **Unique Identification:** Analyze the uniqueness of record combinations.
-7. **Download Results:** Download processed data and reports as needed.
-
-## Directory Structure
-
-```
+```scss
 .
 ├── Application.py
-├── Binning_Tab
-│   ├── Data.csv
-│   ├── Detect_Dtypes.py
-│   ├── Process_Data.py
-│   ├── data_binner.py
-│   ├── data_integrity_assessor.py
-│   ├── density_plotter.py
-│   ├── unique_bin_identifier.py
-│   └── utils.py
-├── Data.csv
 ├── README.md
-├── outputs
-│   ├── category_mappings
-│   ├── plots
-│   ├── processed_data
-│   ├── reports
-│   └── unique_identifications
-└── requirements.txt
+├── __pycache__
+│   ├── ... (compiled Python files)
+├── data
+│   ├── Data.csv
+│   ├── Data.pkl
+│   ├── geocache.db
+│   └── outputs
+│       ├── category_mappings
+│       │   ├── ... (CSV mapping files)
+│       ├── plots
+│       │   ├── ... (Plot images)
+│       ├── processed_data
+│       │   ├── ... (Processed data files)
+│       ├── reports
+│       │   ├── ... (Report CSV files)
+│       └── unique_identifications
+│           └── unique_identifications.csv
+├── logs
+│   └── app.log
+├── requirements.txt
+└── src
+    ├── __pycache__
+    │   └── ... (compiled Python files)
+    ├── binning
+    │   ├── __init__.py
+    │   ├── data_binner.py
+    │   ├── data_integrity_assessor.py
+    │   ├── density_plotter.py
+    │   ├── k_anonymity_binner.py
+    │   └── unique_bin_identifier.py
+    ├── config.py
+    ├── data_processing
+    │   ├── __init__.py
+    │   ├── Detect_Dtypes.py
+    │   └── Process_Data.py
+    ├── location_granularizer
+    │   ├── __init__.py
+    │   └── geocoding.py
+    └── utils
+        ├── __init__.py
+        └── utils.py
 ```
 
-## Detailed Documentation
+### Key Directories and Files:
+
+- **`Application.py`**: The main entry point of the application, orchestrating the user interface and workflow.
+- **`src/`**: Contains all source code, further divided into submodules for specific functionalities.
+    - **`binning/`**: Handles data binning and related analyses.
+    - **`data_processing/`**: Manages data type detection and initial data processing.
+    - **`location_granularizer/`**: Deals with geocoding and location data granularization.
+    - **`utils/`**: Provides utility functions and helpers used across modules.
+- **`data/`**: Stores datasets, processed outputs, reports, plots, and caches.
+- **`logs/`**: Contains log files for monitoring and debugging.
+- **`requirements.txt`**: Lists all Python dependencies required to run the application.
+
+## Application Pipelines
+
+### Main Application Module (Application.py)
+```mermaid
+flowchart TD
+    %% Define styles for clarity
+    classDef mainModule fill:#FF6F61,stroke:#333,stroke-width:2px, font-weight:bold;
+    classDef functionStyle fill:#FFE5D9,stroke:#333,stroke-width:1px;
+    
+    %% Main Application Module
+    main["main()"]:::functionStyle --> setup_page["setup_page()"]:::functionStyle
+    main --> initialize_session_state["initialize_session_state()"]:::functionStyle
+    main --> sidebar_inputs["sidebar_inputs()"]:::functionStyle
+    main --> run_data_processing["run_data_processing()"]:::functionStyle
+    main --> create_tabs["create_tabs()"]:::functionStyle
+
+    sidebar_inputs --> load_and_preview_data["load_and_preview_data()"]:::functionStyle
+    load_and_preview_data --> load_data_util["load_data()"]:::functionStyle
+    load_and_preview_data --> update_session_state1["update_session_state()"]:::functionStyle
+
+    run_data_processing --> run_processing_util["run_processing()"]:::functionStyle
+    run_processing_util --> process["DataProcessor.process()"]:::functionStyle
+
+    create_tabs -->|Tab 1| k_anonymity_binning_tab["k_anonymity_binning_tab()"]:::functionStyle
+    create_tabs -->|Tab 2| binning_tab["binning_tab()"]:::functionStyle
+    create_tabs -->|Tab 3| location_granulariser_tab["location_granulariser_tab()"]:::functionStyle
+    create_tabs -->|Tab 4| unique_identification_analysis_tab["unique_identification_analysis_tab()"]:::functionStyle
+
+    class main mainModule;
+
+```
+
+### Data Flows
+```mermaid
+flowchart TD
+    %% Define styles for clarity
+    classDef functionStyle fill:#FFE0B2,stroke:#333,stroke-width:1px;
+    classDef flowStyle stroke:#B565A7,stroke-width:2px,stroke-dasharray: 5 5;
+    
+    %% Data Flows
+    subgraph Group_1
+        binning_tab["binning_tab()"]:::functionStyle --> perform_binning["perform_binning()"]:::functionStyle
+        perform_binning --> DataBinner.bin_columns["DataBinner.bin_columns()"]:::functionStyle
+        perform_binning --> perform_integrity_assessment["perform_integrity_assessment()"]:::functionStyle
+        perform_integrity_assessment --> handle_integrity_assessment_util["handle_integrity_assessment()"]:::functionStyle
+        perform_binning --> plot_density_plots_and_display_util["plot_density_plots_and_display()"]:::functionStyle
+    end
+    
+    subgraph Group_2
+        k_anonymity_binning_tab["k_anonymity_binning_tab()"]:::functionStyle --> perform_k_anonymity_binning["perform_k_anonymity_binning()"]:::functionStyle
+        perform_k_anonymity_binning --> KAnonymityBinner.perform_binning["KAnonymityBinner.perform_binning()"]:::functionStyle
+        perform_k_anonymity_binning --> handle_download_k_binned_data_util["handle_download_k_binned_data()"]:::functionStyle
+    end
+
+    subgraph Group_3
+        location_granulariser_tab["location_granulariser_tab()"]:::functionStyle --> perform_geocoding["perform_geocoding()"]:::functionStyle
+        location_granulariser_tab --> perform_granular_location_generation["perform_granular_location_generation()"]:::functionStyle
+        perform_granular_location_generation --> generate_granular_location["generate_granular_location()"]:::functionStyle
+        location_granulariser_tab --> display_geocoded_with_granular_data["display_geocoded_with_granular_data()"]:::functionStyle
+        display_geocoded_with_granular_data --> prepare_map_data["prepare_map_data()"]:::functionStyle
+    end
+
+    subgraph Group_4
+        unique_identification_analysis_tab["unique_identification_analysis_tab()"]:::functionStyle --> perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
+        perform_unique_identification_analysis --> UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"]:::functionStyle
+        unique_identification_analysis_tab --> display_unique_identification_results_util["display_unique_identification_results()"]:::functionStyle
+    end
+
+```
+
+
+### Binning Module (src.binning)
+```mermaid
+flowchart TD
+    %% Define styles for clarity
+    classDef binningModule fill:#6B5B95,stroke:#333,stroke-width:2px, font-weight:bold;
+    classDef classStyle fill:#D1C4E9,stroke:#333,stroke-width:1px;
+    classDef functionStyle fill:#E8DAEF,stroke:#333,stroke-width:1px;
+    
+    %% Binning Module
+    DataBinner["DataBinner"]:::classStyle --> bin_columns["bin_columns()"]:::functionStyle
+    DataIntegrityAssessor["DataIntegrityAssessor"]:::classStyle --> assess_integrity_loss["assess_integrity_loss()"]:::functionStyle
+    DataIntegrityAssessor --> generate_report["generate_report()"]:::functionStyle
+    DensityPlotter["DensityPlotter"]:::classStyle --> plot_grid["plot_grid()"]:::functionStyle
+    UniqueBinIdentifier["UniqueBinIdentifier"]:::classStyle --> find_unique_identifications["find_unique_identifications()"]:::functionStyle
+    KAnonymityBinner["KAnonymityBinner"]:::classStyle --> perform_binning["perform_binning()"]:::functionStyle
+
+    class Binning_Module binningModule;
+
+
+```
+
+### Data Processing Module (src.data_processing)
+```mermaid
+flowchart TD
+    %% Define styles for clarity
+    classDef dataProcessingModule fill:#88B04B,stroke:#333,stroke-width:2px, font-weight:bold;
+    classDef classStyle fill:#C8E6C9,stroke:#333,stroke-width:1px;
+    classDef functionStyle fill:#DCEDC8,stroke:#333,stroke-width:1px;
+    
+    %% Data Processing Module
+    DataProcessor["DataProcessor"]:::classStyle --> process["process()"]:::functionStyle
+
+    class Data_Processing_Module dataProcessingModule;
+
+```
+
+### Location Granularizer Module (src.location_granularizer)
+```mermaid
+flowchart TD
+    %% Define styles for clarity
+    classDef functionStyle fill:#cff,stroke:#333,stroke-width:1px;
+    
+    %% Location Granularizer Module
+    perform_geocoding["perform_geocoding()"]:::functionStyle --> interpret_location["interpret_location()"]:::functionStyle
+    interpret_location --> reverse_geocode_with_cache["reverse_geocode_with_cache()"]:::functionStyle
+    perform_geocoding --> generate_granular_location["generate_granular_location()"]:::functionStyle
+    generate_granular_location --> prepare_map_data["prepare_map_data()"]:::functionStyle
+```
+
+### Utils Module (src.utils)
+```mermaid
+flowchart TD
+    %% Define styles for clarity
+    classDef utilsModule fill:#92A8D1,stroke:#333,stroke-width:2px, font-weight:bold;
+    classDef functionStyle fill:#BBDEFB,stroke:#333,stroke-width:1px;
+    classDef isolatedProcess fill:#E3F2FD,stroke:#333,stroke-width:1px, stroke-dasharray: 5 5;
+    
+    %% Utils Module Functions
+    subgraph Utils_Module
+        load_data_util["load_data()"]:::functionStyle -->|Uses| load_data["load_data()"]:::functionStyle
+        run_processing_util["run_processing()"]:::functionStyle -->|Uses| run_processing["run_processing()"]:::functionStyle
+        run_processing["run_processing()"]:::functionStyle --> process["DataProcessor.process()"]:::functionStyle
+        save_dataframe_util["save_dataframe()"]:::functionStyle
+        align_dataframes_util["align_dataframes()"]:::functionStyle
+        get_binning_configuration_util["get_binning_configuration()"]:::functionStyle
+        plot_entropy_and_display_util["plot_entropy_and_display()"]:::functionStyle
+        plot_density_plots_and_display_util["plot_density_plots_and_display()"]:::functionStyle
+        handle_download_binned_data_util["handle_download_binned_data()"]:::functionStyle
+        handle_download_k_binned_data_util["handle_download_k_binned_data()"]:::functionStyle
+        handle_integrity_assessment_util["handle_integrity_assessment() "]:::functionStyle
+        handle_unique_identification_analysis_util["handle_unique_identification_analysis()"]:::functionStyle
+        display_unique_identification_results_util["display_unique_identification_results()"]:::functionStyle
+
+        %% Utils Functions Connections
+        perform_integrity_assessment_util["handle_integrity_assessment()"]:::functionStyle -->|Uses| DataIntegrityAssessor.assess_integrity_loss["DataIntegrityAssessor.assess_integrity_loss()"]:::functionStyle
+        handle_integrity_assessment_util["handle_integrity_assessment()"]:::functionStyle -->|Uses| DataIntegrityAssessor.generate_report["DataIntegrityAssessor.generate_report()"]:::functionStyle
+        plot_density_plots_and_display_util["plot_density_plots_and_display()"]:::functionStyle -->|Uses| DensityPlotter.plot_grid["DensityPlotter.plot_grid()"]:::functionStyle
+        handle_download_binned_data_util["handle_download_binned_data()"]:::functionStyle -->|Uses| save_dataframe_util["save_dataframe()"]:::functionStyle
+        handle_download_k_binned_data_util["handle_download_k_binned_data()"]:::functionStyle -->|Uses| save_dataframe_util["save_dataframe()"]:::functionStyle
+        display_unique_identification_results_util["display_unique_identification_results()"]:::functionStyle -->|Uses| display_unique_identification_results["display_unique_identification_results()"]:::functionStyle
+    end
+
+    class Utils_Module utilsModule;
+
+```
+
+
+### Data Types
+
+```mermaid
+flowchart TD
+    %% Define styles for clarity
+    classDef functionStyle fill:#cff,stroke:#333,stroke-width:1px;
+
+    %% Data Types
+    load_data_util["load_data()"] -.->|Returns: DataFrame| load_and_preview_data["load_and_preview_data()"]:::functionStyle
+    run_processing_util["run_processing()"] -.->|Returns: DataFrame| run_data_processing["run_data_processing()"]:::functionStyle
+    DataProcessor.process["DataProcessor.process()"] -.->|Returns: DataFrame| run_processing_util["run_processing()"]:::functionStyle
+    DataBinner.bin_columns["DataBinner.bin_columns()"] -.->|Returns: DataFrame & Dict| perform_binning["perform_binning()"]:::functionStyle
+    KAnonymityBinner.perform_binning["KAnonymityBinner.perform_binning()"] -.->|Returns: DataFrame| perform_k_anonymity_binning["perform_k_anonymity_binning()"]:::functionStyle
+    UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"] -.->|Returns: DataFrame| perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
+    generate_granular_location["generate_granular_location()"] -.->|Returns: DataFrame| perform_granular_location_generation["perform_granular_location_generation()"]:::functionStyle
+    prepare_map_data["prepare_map_data()"] -.->|Returns: DataFrame| display_geocoded_with_granular_data["display_geocoded_with_granular_data()"]:::functionStyle
+    find_unique_identifications["find_unique_identifications()"] -.->|Returns: DataFrame| perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
+```
+
+
+## Module Breakdown
 
 ### 1. Application.py
 
-**Purpose**
+**Location**: Root directory
 
-`Application.py` serves as the main entry point of the application, built using Streamlit to provide a user-friendly web interface. It orchestrates the entire data processing pipeline, allowing users to upload datasets, configure binning options, assess data integrity, visualize data distributions, and perform unique identification analyses.
+**Purpose**: Serves as the main application module, setting up the Streamlit user interface, managing user interactions, and coordinating various processing tasks through different tabs.
 
-**Key Functionalities**
+**Key Components:**
 
-- **User Interface Setup:** Configures the Streamlit page, including layout and custom styles.
-- **File Upload & Settings:** Allows users to upload datasets (.csv or .pkl) and select output formats.
-- **Binning Configuration:** Enables users to choose binning methods (Quantile or Equal Width) and select columns for binning.
-- **Data Processing Pipeline:** Loads, processes, and bins the data using auxiliary scripts.
-- **Data Integrity Assessment:** Evaluates the impact of binning on data integrity.
-- **Visualization:** Generates and displays density and entropy plots.
-- **Unique Identification Analysis:** Analyzes combinations of binned columns to determine their uniqueness in identifying records.
-- **Download Options:** Provides functionality to download processed data and analysis results.
+- **Imports**: Integrates modules from `src.binning`, `src.utils`, `src.config`, and `src.location_granularizer`.
+- **Session State Management**: Initializes and updates session state variables to maintain state across user interactions.
+- **Page Configuration**: Sets up Streamlit page settings and custom styles.
+- **Sidebar Inputs**: Renders the sidebar for file uploads, settings, binning options, and displays session state information.
+- **Data Loading and Saving**: Handles the loading of uploaded datasets and saving of raw and processed data.
+- **Tabs**: Implements four main tabs:
+    - 🔒 K-Anonymity Binning
+    - 📊 Manual Binning
+    - 📍 Location Data Geocoding Granulariser
+    - 🔍 Unique Identification Analysis
+- **Main Function**: Orchestrates the overall workflow, invoking appropriate functions based on user inputs and tab selections.
 
-**Inputs**
+### 2. Configuration Module (`config.py`)
 
-- **User-Uploaded Data:** CSV or Pickle files containing the dataset to be processed.
-- **User Selections:**
-  - Output file type (csv or pkl)
-  - Binning method (Quantile or Equal Width)
-  - Columns to bin
-  - Binning configurations via sliders
+**Location**: `src/config.py`
 
-**Outputs**
+**Purpose**: Centralizes path configurations and directory management, ensuring consistency across the application.
 
-- **Processed Data:** Binned dataset saved in the chosen format.
-- **Reports:** Integrity loss report and type conversion report.
-- **Plots:** Binned density plots, entropy plots, and original density plots.
-- **Unique Identification Results:** Analysis results indicating the uniqueness of record combinations.
-- **Downloadable Files:** Options to download processed data and analysis reports.
+**Key Components:**
 
-**Pipeline Role**
+- **Directory Paths**: Defines base directories (`BASE_DIR`, `DATA_DIR`, `LOGS_DIR`) and subdirectories for processed data, reports, plots, unique identifications, and category mappings.
+- **Directory Initialization**: Ensures that all necessary directories exist, creating them if they don't.
 
-Acts as the central coordinator, integrating various components like data loading, binning, integrity assessment, visualization, and analysis. It leverages scripts within the `Binning_Tab` directory to perform specific tasks and presents the results to the user through a cohesive interface.
+### 3. Binning Module (`src.binning`)
 
----
+**Location**: `src/binning/`
 
-### 2. data_binner.py
+**Purpose**: Manages data binning operations, assessing data integrity post-binning, plotting density distributions, and conducting unique identification analyses.
 
-**Purpose**
+**Submodules and Their Roles:**
 
-`data_binner.py` contains the `DataBinner` class, which is responsible for binning specified columns in a Pandas DataFrame. Binning transforms continuous or categorical data into discrete bins, aiding in data analysis and visualization.
+#### `data_binner.py`
 
-**Key Functionalities**
+**Class `DataBinner`**: Bins specified columns based on methods like 'equal width' or 'quantile'.
 
-- **Initialization:** Sets up the original and binned DataFrames, and categorizes columns based on their data types.
-- **Binning Methods:** Supports Equal Width and Quantile binning techniques.
-- **Column Type Handling:** Bins columns differently based on whether they're datetime, integer, or float types.
-- **Error Handling:** Skips unsupported columns and logs relevant warnings.
+**Functions:**
 
-**Inputs**
+- `bin_columns`: Performs binning on selected columns.
+- `_bin_column`: Helper function to bin individual columns.
+- `get_binned_data`, `get_binned_columns`: Retrieve binned data and column categorizations.
 
-- **DataFrame (Data):** The original dataset to be binned.
-- **Binning Method (method):** Specifies the binning technique (equal width or quantile).
-- **Binning Configuration (bin_dict):** A dictionary specifying the number of bins for each column.
+#### `k_anonymity_binner.py`
 
-**Outputs**
+**Class `KAnonymityBinner`**: Implements k-anonymity binning to ensure that each combination of binned columns appears at least k times.
 
-- **Binned DataFrame (binned_df):** The DataFrame containing binned columns.
-- **Binned Columns Dictionary (binned_columns):** Categorizes successfully binned columns by their data types (datetime, integer, float).
+**Functions:**
 
-**Pipeline Role**
+- `perform_binning`: Executes the k-anonymity binning process.
+- `_get_initial_bins`, `_apply_binning`, `_check_k_anonymity`, `_adjust_bins`: Helper functions to manage bin configurations and verify k-anonymity.
 
-Operates as the core component for transforming data within the pipeline. After data type detection and conversion (handled by `Detect_Dtypes.py` and `Process_Data.py`), `DataBinner` performs the binning operation, which is essential for subsequent data integrity assessments and visualizations.
+#### `data_integrity_assessor.py`
 
----
+**Class `DataIntegrityAssessor`**: Assesses the loss of data integrity post-binning by comparing entropy levels.
 
-### 3. data_integrity_assessor.py
+**Functions:**
 
-**Purpose**
+- `assess_integrity_loss`: Computes entropy loss for each column.
+- `generate_report`, `save_report`, `plot_entropy`, `get_overall_loss`: Generate and manage integrity reports and visualizations.
 
-`data_integrity_assessor.py` houses the `DataIntegrityAssessor` class, which evaluates the loss of information resulting from the binning process. It quantifies how much the original data's entropy has been reduced post-binning.
+#### `density_plotter.py`
 
-**Key Functionalities**
+**Class `DensityPlotter`**: Generates density plots for selected columns to visualize data distributions before and after binning.
 
-- **Entropy Calculation:** Computes the entropy of both original and binned columns to measure data complexity.
-- **Integrity Loss Assessment:** Determines the absolute and percentage loss in entropy for each column.
-- **Report Generation:** Creates a detailed report summarizing the integrity loss per column and overall.
-- **Visualization:** Generates entropy comparison plots to visually represent data loss.
+**Functions:**
 
-**Inputs**
+- `plot_grid`: Creates a grid of density plots.
 
-- **Original DataFrame (original_df):** The dataset before binning.
-- **Binned DataFrame (binned_df):** The dataset after binning.
+#### `unique_bin_identifier.py`
 
-**Outputs**
+**Class `UniqueBinIdentifier`**: Identifies unique observations based on combinations of binned columns.
 
-- **Integrity Loss Report (`Integrity_Loss_Report.csv`):** A CSV file detailing entropy loss metrics for each column.
-- **Entropy Plot (`entropy_plot.png`):** A visual comparison of original and binned entropies.
-- **Overall Loss Metric:** Average percentage loss across all columns.
+**Functions:**
 
-**Pipeline Role**
+- `find_unique_identifications`: Analyzes combinations to determine unique identifications.
+- `get_results`, `save_results`, `plot_results`: Manage results and visualizations.
 
-Following the binning operation, `DataIntegrityAssessor` assesses the quality and impact of binning by measuring data integrity loss. This evaluation is crucial for understanding the trade-offs between data simplification and information preservation, informing decisions on binning configurations.
+#### `__init__.py`
 
----
+**Exports**: Makes classes like `DataBinner`, `KAnonymityBinner`, `DataIntegrityAssessor`, `DensityPlotter`, and `UniqueBinIdentifier` accessible when importing `src.binning`.
 
-### 4. density_plotter.py
+### 4. Data Processing Module (`src.data_processing`)
 
-**Purpose**
+**Location**: `src/data_processing/`
 
-`density_plotter.py` features the `DensityPlotter` class, which generates density plots for selected categorical or integer columns in a DataFrame. These plots help visualize the distribution and density of data points across different bins or categories.
+**Purpose**: Handles initial data processing tasks, including data type detection and type conversions to prepare the dataset for binning.
 
-**Key Functionalities**
+**Submodules and Their Roles:**
 
-- **Plot Generation:** Creates density plots for specified columns, supporting both original and binned data.
-- **Customization:** Allows configuration of figure size, plot style, and save paths.
-- **Grid Layout:** Organizes multiple plots in a grid for comprehensive visualization.
-- **Saving & Displaying:** Offers options to save plots as images or display them within the Streamlit interface.
+#### `Detect_Dtypes.py`
 
-**Inputs**
+**Class `DtypeDetector`**: Detects and converts column data types based on specified thresholds and configurations.
 
-- **DataFrame (dataframe):** The dataset containing the columns to plot.
-- **Category Columns (category_columns):** List of columns to generate density plots for.
-- **Plotting Parameters:** Including figure size, save path, and plot style.
+**Functions:**
 
-**Outputs**
+- `process_dataframe`: Processes the DataFrame to determine and convert data types.
+- `_detect_dtype`, `_convert_dtype`: Helper functions for data type operations.
+- `get_category_mapping`: Retrieves mappings for categorical variables.
 
-- **Density Plots:** Visual representations of data distributions, either displayed in the application or saved as image files.
+#### `Process_Data.py`
 
-**Pipeline Role**
+**Class `DataProcessor`**: Orchestrates the data processing workflow, utilizing `DtypeDetector` to process and save data.
 
-Integrates into the visualization phase of the pipeline. After data is binned and integrity assessed, `DensityPlotter` provides insights into the distribution of both original and binned data, facilitating better understanding and interpretation of the binning effects.
+**Functions:**
 
----
+- `process`: Executes the processing steps, including reading data, type conversion, and saving processed data.
+- `save_category_mappings`: Saves category mappings for categorical columns.
 
-### 5. Detect_Dtypes.py
+#### `__init__.py`
 
-**Purpose**
+**Exports**: Makes classes like `DtypeDetector` and `DataProcessor` accessible when importing `src.data_processing`.
 
-`Detect_Dtypes.py` contains the `DtypeDetector` class, which is pivotal for detecting and converting data types within a DataFrame. Accurate data type detection ensures that subsequent processing steps, like binning, operate correctly.
+### 5. Location Granularizer Module (`src.location_granularizer`)
 
-**Key Functionalities**
+**Location**: `src/location_granularizer/`
 
-- **Data Type Detection:** Identifies whether columns are integers, floats, dates, booleans, factors (categoricals), or strings based on configurable thresholds.
-- **Data Conversion:** Converts columns to appropriate types, handling special cases like date formatting and categorical encoding.
-- **Category Mapping:** Maintains mappings between categorical codes and their original labels.
-- **Reporting:** Generates type conversion reports detailing the transformations applied to each column.
-- **Parallel Processing:** Supports concurrent processing of columns to enhance performance.
+**Purpose**: Processes location-based data by extracting geographical entities, performing geocoding, and generating granular location information (e.g., city, state, continent).
 
-**Inputs**
+**Submodules and Their Roles:**
 
-- **DataFrame (data):** The dataset requiring data type detection and conversion.
-- **Configuration Parameters:** Thresholds for detecting numeric, date, and factor types, along with logging configurations and conversion options.
+#### `geocoding.py`
 
-**Outputs**
+**Functions:**
 
-- **Processed DataFrame:** The DataFrame with columns converted to their detected types.
-- **Type Conversion Report (`Type_Conversion_Report.csv`):** Details the original and new data types of each column.
-- **Category Mappings:** CSV files mapping categorical codes to their original labels, saved in the `category_mappings` directory.
+- `detect_geographical_columns`: Identifies columns likely containing geographical data.
+- `extract_gpe_entities`: Uses spaCy to extract geopolitical entities from text.
+- `interpret_location`, `geocode_location`, `geocode_location_with_cache`: Perform geocoding with caching mechanisms to optimize performance.
+- `perform_geocoding`: Applies geocoding to selected columns with progress tracking.
+- `reverse_geocode_with_cache`: Retrieves granular location information (e.g., city, state) from latitude and longitude.
+- `generate_granular_location`: Generates new columns with granular location data based on specified granularity levels.
+- `prepare_map_data`: Prepares geocoded data for mapping visualizations.
+- `close_cache_connection`: Ensures that the geocoding cache is properly closed upon application exit.
 
-**Pipeline Role**
+#### `__init__.py`
 
-Functions as the initial step in the data processing pipeline. Before any binning or analysis, `DtypeDetector` ensures that all columns are correctly typed, which is essential for accurate binning, integrity assessment, and further analyses.
+**Exports**: Makes functions like `extract_gpe_entities`, `interpret_location`, `geocode_location_with_cache`, `detect_geographical_columns`, `reverse_geocode_with_cache`, `perform_geocoding`, `generate_granular_location`, and `prepare_map_data` accessible when importing `src.location_granularizer`.
 
----
+### 6. Utilities Module (`src.utils`)
 
-### 6. Process_Data.py
+**Location**: `src/utils/`
 
-**Purpose**
+**Purpose**: Provides a suite of utility functions that support various operations across the application, such as data loading, saving, plotting, and handling downloads.
 
-`Process_Data.py` encapsulates the `DataProcessor` class, which coordinates the data processing workflow. It leverages the `DtypeDetector` to prepare the data for binning and ensures that all necessary outputs and reports are generated and saved appropriately.
+**Submodules and Their Roles:**
 
-**Key Functionalities**
+#### `utils.py`
 
-- **Data Reading:** Loads the input dataset from a CSV file.
-- **Data Type Processing:** Utilizes `DtypeDetector` to detect and convert column data types.
-- **Output Saving:** Saves the processed DataFrame in specified formats (csv, pkl, parquet).
-- **Category Mappings:** Saves mappings for categorical columns to facilitate reverse lookup or interpretation.
-- **Error Handling:** Implements robust error handling to manage failures in parallel or sequential processing.
+**Functions:**
 
-**Inputs**
+- `hide_streamlit_style`: Applies custom CSS to hide Streamlit's default menu and footer for a cleaner interface.
+- `run_processing`: Initializes and executes the data processing workflow using `DataProcessor`.
+- `load_data`: Handles the uploading and loading of datasets into Pandas DataFrames.
+- `align_dataframes`: Ensures that original and binned DataFrames have consistent columns.
+- `save_dataframe`: Saves DataFrames to specified file types and directories.
+- `load_dataframe`: Loads DataFrames from specified file types and paths.
+- `get_binning_configuration`: Generates UI sliders for configuring bin counts on selected columns.
+- `plot_entropy_and_display`: Plots entropy assessments and displays them within Streamlit.
+- `plot_density_plots_and_display`: Generates and displays density plots for original and binned data.
+- `handle_download_binned_data`: Manages the download functionality for binned data.
+- `handle_download_k_binned_data`: Manages the download functionality for k-anonymity binned data.
+- `handle_integrity_assessment`: Conducts data integrity assessments and manages related outputs.
+- `handle_unique_identification_analysis`: Performs unique identification analysis and manages related outputs.
+- `display_unique_identification_results`: Displays the results of unique identification analyses and facilitates downloads.
 
-- **Input File Path (input_filepath):** Path to the raw data CSV file.
-- **Output File Path (output_filepath):** Destination path for the processed data.
-- **Configuration Parameters:** Including thresholds, logging settings, binning options, and save formats.
+#### `__init__.py`
 
-**Outputs**
+**Exports**: Makes all utility functions accessible when importing `src.utils`.
 
-- **Processed Data:** DataFrame saved in the chosen format (csv, pkl, or parquet).
-- **Type Conversion Report (`Type_Conversion_Report.csv`):** Generated by `DtypeDetector`.
-- **Category Mappings:** CSV files mapping categorical codes to original labels.
+## Application Workflow
 
-**Pipeline Role**
+The application follows a structured workflow, segmented into distinct phases corresponding to its main functionalities. Here's an in-depth look at each phase:
 
-Acts as the bridge between raw data ingestion and the binning process. `DataProcessor` ensures that data types are correctly identified and converted, making the dataset ready for effective binning and subsequent analyses. It's invoked by `Application.py` through utility functions to prepare data for user-defined binning operations.
+### 1. Data Upload and Initial Processing
 
----
+**Process:**
 
-### 7. unique_bin_identifier.py
+- **File Upload**: Users upload their dataset via the sidebar, supporting CSV and Pickle (`.pkl`) formats.
+- **Data Loading**: The `load_data` function reads the uploaded file into a Pandas DataFrame.
+- **Data Preview**: A preview of the original data is displayed to the user.
+- **Data Saving**: The raw data is saved in the `data/` directory in the chosen format.
+- **Data Processing**: The `run_processing` function initializes `DataProcessor`, which uses `DtypeDetector` to detect and convert data types based on predefined thresholds and configurations. The processed data is saved in the `processed_data/` subdirectory.
 
-**Purpose**
+**Key Functions:**
 
-`unique_bin_identifier.py` houses the `UniqueBinIdentifier` class, which analyzes combinations of binned columns to determine how effectively they uniquely identify records in the dataset. This analysis helps in understanding the discriminative power of various binning configurations.
+- `sidebar_inputs()`
+- `load_and_preview_data()`
+- `load_data()`
+- `run_processing()`
+- `DataProcessor.process()`
 
-**Key Functionalities**
+### 2. Binning Processes
 
-- **Combination Analysis:** Evaluates all possible combinations of selected bin columns within specified size ranges.
-- **Unique Identification Counting:** Calculates the number of records uniquely identified by each combination.
-- **Result Aggregation:** Compiles results into a DataFrame, ranking combinations by their uniqueness.
-- **Visualization:** Generates plots highlighting the top combinations that offer the highest unique identifications.
-- **Progress Tracking:** Provides real-time feedback on the analysis progress, especially for large datasets.
+The application offers two binning approaches: **Manual Binning** and **K-Anonymity Binning**.
 
-**Inputs**
+#### a. Manual Binning
 
-- **Original DataFrame (original_df):** The unaltered dataset.
-- **Binned DataFrame (binned_df):** The dataset after binning.
-- **Analysis Parameters:**
-  - `min_comb_size`: Minimum number of columns in a combination.
-  - `max_comb_size`: Maximum number of columns in a combination.
-  - `columns`: Specific columns to include in the analysis.
+**Process:**
 
-**Outputs**
+- **Column Selection**: Users select numerical or datetime columns to bin, excluding those used for location granularization.
+- **Binning Configuration**: Users specify the number of bins for each selected column via sliders.
+- **Binning Execution**: The `DataBinner` class bins the data based on the chosen method (`Quantile` or `Equal Width`).
+- **Data Integrity Assessment**: Post-binning, `DataIntegrityAssessor` evaluates the loss in data integrity by comparing entropy before and after binning.
+- **Visualization**: `DensityPlotter` generates density plots to visualize data distributions.
+- **Data Saving and Downloading**: Binned data is incorporated into the global dataset and made available for download.
 
-- **Unique Identification Results (`unique_identifications.csv`):** CSV file listing combinations and their corresponding unique identification counts.
-- **Plots:** Visual representations of the top combinations with the highest unique identifications.
+**Key Functions:**
 
-**Pipeline Role**
+- `binning_tab()`
+- `perform_binning()`
+- `DataBinner.bin_columns()`
+- `perform_integrity_assessment()`
+- `DataIntegrityAssessor.assess_integrity_loss()`
+- `plot_density_plots_and_display()`
+- `handle_download_binned_data()`
 
-Integrates into the post-binning analysis phase, providing insights into how different binning strategies impact the ability to uniquely identify records. This analysis is crucial for applications requiring high data granularity and uniqueness, such as classification tasks or anomaly detection.
+#### b. K-Anonymity Binning
 
----
+**Process:**
 
-### 8. utils.py
+- **Column Selection**: Users select columns for k-anonymity binning.
+- **K Value Specification**: Users set the desired k value to define anonymity levels.
+- **Binning Execution**: `KAnonymityBinner` automates binning to ensure that each combination of binned columns appears at least k times.
+- **Data Integration and Download**: The k-anonymity binned data is integrated into the global dataset and made available for download.
 
-**Purpose**
+**Key Functions:**
 
-`utils.py` comprises a collection of utility functions and configurations that support various operations throughout the application. These functions handle tasks like directory management, data loading and saving, plotting, and user interactions within the Streamlit interface.
+- `k_anonymity_binning_tab()`
+- `perform_k_anonymity_binning()`
+- `KAnonymityBinner.perform_binning()`
+- `handle_download_k_binned_data()`
 
-**Key Functionalities**
+### 3. K-Anonymity Binning
 
-- **Output Directory Management:** Creates necessary directories for storing outputs like processed data, reports, and plots.
-- **Streamlit UI Enhancements:** Customizes the Streamlit interface by hiding default menus and footers for a cleaner look.
-- **Data Loading:** Facilitates the loading of uploaded files into Pandas DataFrames.
-- **Data Alignment:** Ensures that the original and binned DataFrames have consistent columns.
-- **Binning Configuration UI:** Generates dynamic sliders for users to configure binning parameters.
-- **Plotting Helpers:** Handles the generation and saving of entropy and density plots.
-- **Download Handlers:** Manages the downloading of processed data and analysis results.
-- **Integrity Assessment Handling:** Orchestrates the process of assessing data integrity post-binning.
-- **Unique Identification Analysis Handling:** Manages the workflow for performing and displaying unique identification analyses.
+**Detailed Steps:**
 
-**Inputs and Outputs**
+- **Column Selection**: Users select one or more columns for k-anonymity binning.
+- **K Value Input**: Users input the desired level of anonymity (k), defaulting to 5.
+- **Binning Execution**:
+    - `KAnonymityBinner` reduces the number of bins iteratively until each combination of binned columns meets the k-anonymity requirement.
+    - The process ensures that no combination uniquely identifies an individual.
+- **Result Integration**: Binned columns are added to the `GLOBAL_DATA` session state.
+- **Data Download**: Users can download the k-anonymity binned dataset in their preferred format.
 
-Various: Each utility function has its specific inputs and outputs, such as DataFrames, file paths, user selections, and plot objects.
+**Key Considerations:**
 
-**Pipeline Role**
+- The binning method (`Quantile` or `Equal Width`) influences how data is grouped.
+- Larger values of k may result in fewer, broader bins to meet anonymity requirements.
 
-Acts as the support backbone of the application, providing essential functions that streamline data processing, user interactions, and result presentations. By encapsulating common tasks, `utils.py` ensures modularity and reusability across different components of the application.
+### 4. Location Data Geocoding and Granularization
 
-## Additional Components
+**Process:**
 
-### A. `outputs` Directory
+- **Geographical Column Detection**: Automatically detects columns containing geographical data using keywords (e.g., 'city', 'country').
+- **Geocoding**: Converts textual location data into latitude and longitude coordinates using Nominatim via geopy.
+- **Caching**: Implements caching with SQLite to store geocoding results, reducing redundant API calls and improving performance.
+- **Granular Location Generation**: Derives more specific location information (e.g., suburb, state, continent) from coordinates.
+- **Visualization**: Prepares data for mapping visualizations and displays them upon user request.
 
-Houses all the generated outputs from the application, organized into subdirectories for clarity and ease of access.
+**Key Functions:**
 
-- **category_mappings:** Contains CSV files mapping categorical codes to their original labels for each factor column.
-- **plots:** Stores all generated plots, including density and entropy plots.
-- **processed_data:** Contains the processed and binned datasets in the chosen formats (csv, pkl, etc.).
-- **reports:** Holds various reports like integrity loss reports and type conversion reports.
-- **unique_identifications:** Stores the results of unique identification analyses.
+- `location_granulariser_tab()`
+- `perform_geocoding_process()`
+- `perform_granular_location_generation()`
+- `generate_granular_location()`
+- `prepare_map_data()`
+- `map_section()`
 
-### B. `README.md`
+**Key Components:**
 
-Provides comprehensive documentation about the application, including setup instructions, usage guidelines, and descriptions of functionalities.
+- **Caching**: Utilizes SQLite (`geocache.db`) to store forward and reverse geocoding results.
+- **Geocoding Rate Limiting**: Adheres to Nominatim's rate limit by introducing delays between API calls.
+- **Error Handling**: Manages exceptions during geocoding to ensure robustness.
 
-### C. `requirements.txt`
+### 5. Data Integrity Assessment
 
-Lists all the Python dependencies required to run the application, ensuring that the environment is correctly set up for seamless execution.
+**Process:**
 
-## Pipeline Summary
+- **Entropy Calculation**: Measures the entropy (information content) of original and binned data to assess information loss.
+- **Integrity Report**: Generates a report detailing entropy loss per column and overall data integrity loss.
+- **Visualization**: Plots entropy comparisons using bar charts to visualize the impact of binning.
 
-1. **Data Ingestion**
-   - **User Action:** Uploads a dataset via `Application.py`.
-   - **Processing:** `utils.py`'s `load_data` function reads the uploaded file into a Pandas DataFrame.
+**Key Functions:**
 
-2. **Data Processing & Type Conversion**
-   - **Processing:** `Process_Data.py` utilizes `DtypeDetector` from `Detect_Dtypes.py` to detect and convert data types.
-   - **Output:** Saves the processed DataFrame and generates type conversion reports.
+- `perform_integrity_assessment()`
+- `DataIntegrityAssessor.assess_integrity_loss()`
+- `plot_entropy_and_display()`
 
-3. **Binning Configuration & Execution**
-   - **User Action:** Selects binning methods and columns within the Streamlit interface.
-   - **Processing:** `data_binner.py`'s `DataBinner` bins the selected columns based on user configurations.
-   - **Output:** Binned DataFrame and categorization of binned columns.
+### 6. Density Plotting
 
-4. **Data Integrity Assessment**
-   - **Processing:** `data_integrity_assessor.py` evaluates the entropy loss due to binning.
-   - **Output:** Integrity loss reports and entropy plots.
+**Process:**
 
-5. **Visualization**
-   - **Processing:** `density_plotter.py` generates density plots for both original and binned data.
-   - **Output:** Density plots displayed within the application and saved for reference.
+- **Visualization**: Generates density plots to compare data distributions before and after binning.
+- **Interactive Tabs**: Provides separate tabs for original and binned data density plots for clarity.
 
-6. **Unique Identification Analysis**
-   - **User Action:** Initiates analysis of unique identifications through the interface.
-   - **Processing:** `unique_bin_identifier.py` analyzes combinations of binned columns to determine uniqueness.
-   - **Output:** Analysis results displayed and saved as CSV and visual plots.
+**Key Functions:**
 
-7. **Reporting & Downloading**
-   - **User Action:** Downloads processed data, reports, and analysis results as needed.
-   - **Processing:** `utils.py` manages download buttons and file preparations.
+- `plot_density_plots_and_display()`
+- `DensityPlotter.plot_grid()`
 
-## Requirements
+### 7. Unique Identification Analysis
 
-All dependencies are listed in the `requirements.txt` file. Ensure you have `Python 3.10.11`.
+**Process:**
 
-## License
+- **Combination Analysis**: Evaluates combinations of binned and granular location columns to identify unique records.
+- **Scalability**: Allows users to specify the range of combination sizes (`min_comb_size` to `max_comb_size`) to balance performance and comprehensiveness.
+- **Result Presentation**: Displays the number of unique identifications per combination and offers download options.
+- **Integrity Reassessment**: Re-evaluates data integrity post-analysis.
 
-This project is licensed under the [MIT License](LICENSE).
+**Key Functions:**
+
+- `unique_identification_analysis_tab()`
+- `unique_identification_section_ui()`
+- `perform_unique_identification_analysis()`
+- `UniqueBinIdentifier.find_unique_identifications()`
+- `display_unique_identification_results()`
+
+## Session State Management
+
+**Purpose**: Maintains the application's state across user interactions, ensuring consistency and enabling dynamic updates without data loss.
+
+**Key Components:**
+
+- **Initialization**: The `initialize_session_state()` function sets default values for various session state variables, such as original and processed data, binning configurations, geocoded data, and flags indicating the completion of processing steps.
+- **State Updates**: The `update_session_state()` function updates session variables and logs changes for transparency.
+- **Session State Logs**: Provides a detailed log of all session state updates, accessible via the sidebar's "Session State Info" expander.
+- **Flags**: Boolean flags (`is_binning_done`, `is_geocoding_done`, etc.) indicate the completion of specific processing stages, enabling conditional rendering and processing within tabs.
+
+## Inter-Module Interactions
+
+The application's modular architecture promotes separation of concerns, with each module handling specific functionalities. Here's how the modules interact:
+
+- **`Application.py`** acts as the orchestrator, importing and invoking functions from various modules based on user interactions.
+
+### Binning Module (`src.binning`):
+
+- `DataBinner` and `KAnonymityBinner` perform binning operations, updating the global dataset.
+- `DataIntegrityAssessor` evaluates the impact of binning on data integrity.
+- `DensityPlotter` visualizes data distributions.
+- `UniqueBinIdentifier` conducts unique identification analyses.
+
+### Data Processing Module (`src.data_processing`):
+
+- `DataProcessor` uses `DtypeDetector` to preprocess the data, ensuring appropriate data types for binning and analysis.
+
+### Location Granularizer Module (`src.location_granularizer`):
+
+- Handles geocoding and granular location generation, integrating results into the global dataset.
+
+### Utilities Module (`src.utils`):
+
+- Provides helper functions for data loading, saving, plotting, and download handling, facilitating seamless interactions between modules.
+
+### Configuration Module (`config.py`):
+
+- Supplies consistent directory paths and configurations to all modules, ensuring uniform data management.
+
+## Caching Mechanisms
+
+**Purpose**: Enhances performance and reduces redundant API calls during geocoding processes.
+
+**Implementation:**
+
+- **SQLite Database (`geocache.db`)**: Stores forward and reverse geocoding results.
+- **Tables**:
+    - `geocache`: Caches location strings with their corresponding latitude and longitude.
+    - `reverse_geocache`: Caches granular location information (e.g., city, state) based on latitude and longitude.
+- **Cache Access**:
+    - Before performing a geocoding request, the application checks the cache.
+    - If a cached result exists, it retrieves data from the cache instead of making an API call.
+    - New geocoding results are added to the cache for future use.
+- **Connection Management**: Ensures that the SQLite connection is properly closed upon application exit using the `atexit` module.
+
+## File and Directory Management
+
+### Configuration (`config.py`):
+
+- **Base Directories**: Establishes the foundational directories for data storage, logs, and outputs.
+- **Subdirectories**: Organizes outputs into categories like processed data, reports, plots, unique identifications, and category mappings.
+- **Directory Creation**: Automatically creates necessary directories if they don't exist, preventing runtime errors.
+
+**Data Storage:**
+
+- **Raw Data**: Stored in the `data/` directory (`Data.csv` and `Data.pkl`).
+- **Processed Data**: Saved in `data/outputs/processed_data/`.
+- **Reports and Plots**: Generated reports are saved in `data/outputs/reports/`, and plots in `data/outputs/plots/`.
+- **Unique Identifications**: Results from unique identification analyses are stored in `data/outputs/unique_identifications/`.
+- **Category Mappings**: Mappings for categorical variables are saved in `data/outputs/category_mappings/`.
+
+**Logging:**
+
+- **Log Files**: Application logs are maintained in `logs/app.log`, capturing informational messages, warnings, and errors for debugging and monitoring purposes.
+
+## Conclusion
+
+The De-Identification Tool Application is a robust and modular platform designed to anonymize datasets effectively while maintaining their analytical value. Its structured codebase, comprehensive processing modules, and user-friendly interface make it a powerful tool for organizations seeking to balance data utility with privacy requirements. By leveraging advanced techniques like binning, k-anonymity, and geocoding, the application ensures that sensitive information is de-identified meticulously, fostering trust and compliance in data handling practices.
+
+For further enhancements, consider integrating additional anonymization techniques, expanding support for more data formats, or incorporating machine learning models to predict optimal binning strategies based on dataset characteristics.
