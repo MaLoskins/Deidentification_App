@@ -5,5 +5,4 @@ from .utils_loading import *
 from .utils_plotting import *
 from .utils_bintab import *
 from .utils_integritytab import *
-from .utils_saving import *
 from .utils_general import * 

@@ -3,8 +3,6 @@
 import streamlit as st
 import pandas as pd
 import traceback
-from .utils_loading import align_dataframes
-from .utils_plotting import plot_density_plots_and_display
 from src.binning import DataBinner, DataIntegrityAssessor
 from src.config import REPORTS_DIR
 import os
@@ -37,22 +35,12 @@ def perform_binning(original_data, binning_method, bin_dict):
         with st.spinner('Binning data...'):
             binner = DataBinner(original_data, method=binning_method.lower())
             binned_df, binned_columns = binner.bin_columns(bin_dict)
-            st.dataframe(binned_df.head())
-            st.write(f"binned columns: {binned_columns}")   
-            # Display the dtypes of columns selected using the original data
-            st.write(f"dtypes of columns selected: {original_data.dtypes}")
-            # Align both DataFrames (original and binned) to have the same columns
-            OG_Data_BinTab, Data_BinTab = align_dataframes(original_data, binned_df)
+            return original_data, binned_df
 
     except Exception as e:
         st.error(f"Error during binning: {e}")
         st.error(traceback.format_exc())
         st.stop()
-    
-    # Display data frames of OG_Data_BinTab and Data_BinTab
-    st.subheader('📊 Data Preview (Binned Data)')
-    st.dataframe(Data_BinTab.head())
-    st.dataframe(OG_Data_BinTab.head())
 
     st.success("✅ Binning completed successfully!")
 

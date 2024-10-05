@@ -3,27 +3,24 @@
 import os
 import traceback
 import pandas as pd
+import numpy as np
+import seaborn as sns
 import streamlit as st
+import matplotlib.pyplot as plt
 from src.binning import KAnonymityBinner
 from src.utils import (
     hide_streamlit_style,
     load_data,
     align_dataframes,
-    save_dataframe,
     run_processing,
     get_binning_configuration,
-    plot_entropy_and_display,
-    plot_density_plots_and_display,
-    handle_download_binned_data,
-    handle_download_k_binned_data,
-    display_unique_identification_results,
     download_binned_data,
     perform_binning,
-    perform_integrity_assessment,
+    perform_integrity_assessment,  # Refactored to return data
     perform_association_rule_mining,
     perform_unique_identification_analysis
 )
-
+from src.utils.utils_plotting import plot_density_plots, plot_entropy  # Direct import from utils_plotting.py
 from src.config import (
     PLOTS_DIR,
     PROCESSED_DATA_DIR,
@@ -126,7 +123,7 @@ def sidebar_inputs():
 
         # Display warning if CSV is selected
         if output_file_type == 'csv':
-            st.warning("⚠️ **Note:** Using CSV will result in the loss of some meta-data regarding data types. This will not affect the application's functionality.")
+            st.warning("⚠️ **Note:** Using CSV will result in the loss of some meta-data regarding data types in downloaded files.")
 
         st.header("⚙️ Binning Options")
         binning_method = st.selectbox('🔧 Select Binning Method', ['Quantile', 'Equal Width'])
@@ -136,10 +133,7 @@ def sidebar_inputs():
         st.markdown("---")
 
         st.header("ℹ️ About")
-        st.info("""
-            This application allows you to upload a dataset, process and bin numerical and datetime columns, 
-            assess data integrity post-binning, visualize data distributions, and perform unique identification analysis.
-        """)
+        st.info("""This application allows you to ... (updates will be added upon completion)""")
         
         # ============================
         # Special Section: Session State Info
@@ -207,6 +201,42 @@ def save_raw_data(Data, output_file_type):
         st.stop()
     return mapped_save_type, data_path
 
+def save_dataframe(df, file_type, filename, subdirectory):
+    """
+    Saves the DataFrame or Figure to the specified file type within a subdirectory.
+    """
+    try:
+        if subdirectory == "processed_data":
+            dir_path = PROCESSED_DATA_DIR
+        elif subdirectory == "reports":
+            dir_path = REPORTS_DIR
+        elif subdirectory == "unique_identifications":
+            dir_path = UNIQUE_IDENTIFICATIONS_DIR
+        elif subdirectory == "plots":
+            dir_path = PLOTS_DIR
+        else:
+            raise ValueError("Unsupported subdirectory for saving.")
+
+        os.makedirs(dir_path, exist_ok=True)  # Ensure directory exists
+        file_path = os.path.join(dir_path, filename)
+        if file_type == 'csv':
+            df.to_csv(file_path, index=False)
+        elif file_type == 'pkl':
+            df.to_pickle(file_path)
+        elif file_type == 'png':
+            # Handle saving plots
+            if isinstance(df, plt.Figure):
+                df.savefig(file_path, bbox_inches='tight')
+            else:
+                raise ValueError("Unsupported data type for saving as PNG.")
+        else:
+            raise ValueError("Unsupported file type for saving.")
+
+        return file_path
+    except Exception as e:
+        st.error(f"Error saving file `{filename}`: {e}")
+        st.stop()
+
 # =====================================
 # Binning Tab Functionality
 # =====================================
@@ -214,8 +244,6 @@ def save_raw_data(Data, output_file_type):
 def binning_tab():
     """Render the Binning Tab in the Streamlit app."""
     st.header("📊 Manual Binning")
-    
-    st.dataframe(st.session_state.ORIGINAL_DATA.head())
     original_data = st.session_state.ORIGINAL_DATA.copy()
     
     # Determine available columns by excluding those selected in Location Granulariser
@@ -229,40 +257,76 @@ def binning_tab():
         key='binning_columns_form'
     )
     update_session_state('Binning_Selected_Columns', selected_columns_binning)
-    # Button to start binning
     
-    # Configure bins if columns are selected
+    # Button to start binning
     if selected_columns_binning:
         bins = get_binning_configuration(original_data, selected_columns_binning)
         update_session_state('Binning_Configuration', bins)
     else:
         st.info("🔄 **Please select at least one column to bin.**")
 
-    # Proceed to binning if bins are configured
     bins = st.session_state.get('Binning_Configuration')
     
-
     if bins and selected_columns_binning:
         try:
             # Perform binning operation
-            OG_Data_BinTab, Data_BinTab = perform_binning(
+            original_data, binned_df = perform_binning(
                 original_data,
                 st.session_state.Binning_Method,
                 bins
             )
-            # Assess data integrity post-binning
-            perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
+            # Align both DataFrames (original and binned) to have the same columns
+            OG_Data_BinTab, Data_BinTab = align_dataframes(original_data, binned_df)
 
+            # Assess data integrity post-binning
+            report, overall_loss, entropy_fig = perform_integrity_assessment(
+                OG_Data_BinTab,
+                Data_BinTab,
+                selected_columns_binning
+            )
+            
+            if report is not None:
+                # Save the integrity report
+                integrity_report_bintab_path = save_dataframe(report, 'csv', 'Integrity_Loss_Report.csv', 'reports')
+                
+                # Display the integrity report
+                st.markdown("### 📄 Integrity Loss Report")
+                st.dataframe(report)
+                st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
+                
+                # Plot and display entropy
+                if entropy_fig:
+                    # Save entropy plot
+                    entropy_plot_path = save_dataframe(entropy_fig, 'png', 'entropy_plot.png', 'plots')
+                    
+                    # Display entropy plot
+                    st.pyplot(entropy_fig)
+            
             # Perform association rule mining
             perform_association_rule_mining(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
-
-            # Plot density distributions for binned data
-            plot_density_plots_and_display(
+            
+            # Plot density distributions for binned and original data
+            fig_orig, fig_binned = plot_density_plots(
                 OG_Data_BinTab[selected_columns_binning].astype('category'), 
                 Data_BinTab[selected_columns_binning], 
-                selected_columns_binning, 
-                PLOTS_DIR
+                selected_columns_binning
             )
+
+            if fig_orig and fig_binned:
+                # Save density plots
+                original_density_plot_path = save_dataframe(fig_orig, 'png', 'original_density_plots.png', 'plots')
+                binned_density_plot_path = save_dataframe(fig_binned, 'png', 'binned_density_plots.png', 'plots')
+                
+                # Create tabs for Original and Binned plots
+                tab1, tab2 = st.tabs(["Original Data", "Binned Data"])
+                
+                # Display the original density plot in the first tab
+                with tab1:
+                    st.pyplot(fig_orig)
+                
+                # Display the binned density plot in the second tab
+                with tab2:
+                    st.pyplot(fig_binned)
             
             # Update GLOBAL_DATA with the binned columns
             st.session_state.GLOBAL_DATA[selected_columns_binning] = Data_BinTab[selected_columns_binning]
@@ -417,7 +481,7 @@ def display_geocoded_with_granular_data():
         # Check if any granular location columns exist in GLOBAL_DATA
         granular_columns_present = [col for col in st.session_state.Location_Selected_Columns if col in st.session_state.GLOBAL_DATA.columns]
         if granular_columns_present:
-            # output categories in the granular location column
+            # Output categories in the granular location column
             categories = st.session_state.GLOBAL_DATA[granular_columns_present].apply(lambda x: x.astype('category').cat.categories)
 
             # Display the DataFrame of categories
@@ -524,18 +588,59 @@ def unique_identification_analysis_tab():
                 )
                 if results is not None:
                     update_session_state('Unique_ID_Results', results)
-                    display_unique_identification_results(results)
+                    
+                    # Display Unique Identification Results
+                    st.markdown("### 📊 Unique Identification Results")
+                    st.dataframe(results)
+                    
+                    # Provide Download Option for Unique Identification Results
+                    csv = results.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Unique Identification Results as CSV",
+                        data=csv,
+                        file_name='unique_identifications.csv',
+                        mime='text/csv',
+                    )
+                    
+                    # Save the Unique Identification Results
+                    unique_id_path = save_dataframe(results, 'csv', 'unique_identifications.csv', 'unique_identifications')
+                    
                     update_session_state('is_unique_id_done', True)
+                
                 # Perform integrity assessment
-                perform_integrity_assessment(original_for_assessment, data_for_assessment, existing_columns)
+                report, overall_loss, entropy_fig = perform_integrity_assessment(original_for_assessment, data_for_assessment, existing_columns)
+                if report is not None:
+                    # Save the integrity report
+                    integrity_report_Identification_path = save_dataframe(report, 'csv', 'Integrity_Loss_Report_Unique_ID.csv', 'reports')
+                    
+                    # Display the integrity report
+                    st.markdown("### 📄 Integrity Loss Report for Unique Identification Analysis")
+                    st.dataframe(report)
+                    st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
+                    
+                    # Plot and display entropy
+                    if entropy_fig:
+                        # Save entropy plot
+                        entropy_plot_path = save_dataframe(entropy_fig, 'png', 'entropy_plot_unique_id.png', 'plots')
+                        
+                        # Display entropy plot
+                        st.pyplot(entropy_fig)
 
                 # Plot density distributions
-                plot_density_plots_and_display(
+                fig_orig, fig_binned = plot_density_plots(
                     original_for_assessment,
                     data_for_assessment,
-                    existing_columns,
-                    PLOTS_DIR
+                    existing_columns
                 )
+                
+                if fig_orig and fig_binned:
+                    # Save density plots
+                    original_density_plot_path = save_dataframe(fig_orig, 'png', 'original_density_plots_unique_id.png', 'plots')
+                    binned_density_plot_path = save_dataframe(fig_binned, 'png', 'binned_density_plots_unique_id.png', 'plots')
+                    
+                    # Display density plots
+                    st.pyplot(fig_orig)
+                    st.pyplot(fig_binned)
     else:
         st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
 
@@ -606,7 +711,11 @@ def k_anonymity_binning_tab():
             try:
                 with st.spinner('Performing k-anonymity binning...'):
                     # Initialize KAnonymityBinner and perform binning
-                    k_anon_binner = KAnonymityBinner(original_data[selected_columns_k_anonymity], k=k_value, method = st.session_state.Binning_Method)
+                    k_anon_binner = KAnonymityBinner(
+                        original_data[selected_columns_k_anonymity],
+                        k=k_value,
+                        method=st.session_state.Binning_Method
+                    )
                     binned_data = k_anon_binner.perform_binning()
 
                     # Update GLOBAL_DATA with the binned columns
@@ -617,21 +726,99 @@ def k_anonymity_binning_tab():
                     st.dataframe(binned_data.head())
 
                     # Provide option to download the k-anonymity binned data
-                    handle_download_k_binned_data(
-                        data=binned_data,
-                        file_type_download=st.selectbox(
-                            '📁 Download Format', 
-                            ['csv', 'pkl'], 
-                            index=0, 
-                            key='k_anon_download_file_type_download'
-                        )
+                    st.markdown("### 💾 Download K-Anonymity Binned Data")
+                    file_type_download = st.selectbox(
+                        '📁 Download Format', 
+                        ['csv', 'pkl'], 
+                        index=0, 
+                        key='k_anon_download_file_type_download'
                     )
+                    
+                    if file_type_download == 'csv':
+                        binned_csv = binned_data.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download K-Anonymity Binned Data as CSV",
+                            data=binned_csv,
+                            file_name='K_binned_data.csv',
+                            mime='text/csv',
+                        )
+                    elif file_type_download == 'pkl':
+                        import io
+                        binned_buffer = io.BytesIO()
+                        binned_data.to_pickle(binned_buffer)
+                        binned_pkl = binned_buffer.getvalue()
+                        st.download_button(
+                            label="📥 Download K-Anonymity Binned Data as Pickle",
+                            data=binned_pkl,
+                            file_name='K_binned_data.pkl',
+                            mime='application/octet-stream',
+                        )
+
+                    # ================================
+                    # Data Loss Analysis Section
+                    # ================================
+                    st.markdown("### 📊 Data Loss Analysis")
+
+                    data_loss_metrics = []
+
+                    for col in selected_columns_k_anonymity:
+                        original_unique = original_data[col].nunique()
+                        binned_unique = binned_data[col].nunique()
+                        reduction = ((original_unique - binned_unique) / original_unique) * 100 if original_unique > 0 else 0
+
+                        data_loss_metrics.append({
+                            'Column': col,
+                            'Original Unique Values': original_unique,
+                            'Binned Unique Values': binned_unique,
+                            'Reduction (%)': f"{reduction:.2f}%"
+                        })
+
+                    # Create a DataFrame for metrics
+                    metrics_df = pd.DataFrame(data_loss_metrics)
+
+                    st.markdown("#### 📈 Unique Values Reduction")
+                    st.table(metrics_df)
+
+                    # Visualize distributions before and after binning
+                    st.markdown("#### 🔍 Original vs. Binned Data Distributions")
+
+                    for col in selected_columns_k_anonymity:
+                        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+                        # Original Data Distribution
+                        ax_orig = axes[0]
+                        if pd.api.types.is_numeric_dtype(original_data[col]) or pd.api.types.is_datetime64_any_dtype(original_data[col]):
+                            sns.histplot(original_data[col].dropna(), bins=30, kde=False, ax=ax_orig, color='blue', alpha=0.5)
+                            ax_orig.set_title(f'Original Distribution of {col}')
+                        else:
+                            original_counts = original_data[col].value_counts().nlargest(20)
+                            sns.barplot(x=original_counts.values, y=original_counts.index, ax=ax_orig, palette='viridis')
+                            ax_orig.set_title(f'Original Distribution of {col}')
+                            ax_orig.set_xlabel('Count')
+                            ax_orig.set_ylabel(col)
+
+                        # Binned Data Distribution
+                        ax_binned = axes[1]
+                        if pd.api.types.is_numeric_dtype(original_data[col]) or pd.api.types.is_datetime64_any_dtype(original_data[col]):
+                            sns.histplot(binned_data[col].dropna(), bins=binned_data[col].nunique(), kde=False, ax=ax_binned, color='orange', alpha=0.5)
+                            ax_binned.set_title(f'Binned Distribution of {col}')
+                        else:
+                            binned_counts = binned_data[col].value_counts().nlargest(20)
+                            sns.barplot(x=binned_counts.values, y=binned_counts.index, ax=ax_binned, palette='magma')
+                            ax_binned.set_title(f'Binned Distribution of {col}')
+                            ax_binned.set_xlabel('Count')
+                            ax_binned.set_ylabel(col)
+
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        plt.close(fig)
 
             except Exception as e:
                 st.error(f"Error during k-anonymity binning: {e}")
                 st.error(traceback.format_exc())
     else:
         st.info("🔄 **Please select at least one column for k-anonymity binning.**")
+
 
 # =====================================
 # Main Function

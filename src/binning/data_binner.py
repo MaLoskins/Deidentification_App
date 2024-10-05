@@ -48,8 +48,6 @@ class DataBinner:
             'category_grouped': [],
             'unsupported': []
         }
-        import streamlit as st
-        st.write(f"bin_dict: {bin_dict}")
         # Create a copy of the DataFrame to avoid modifying the original data
         Bin_Data = self.original_df.copy()
 
