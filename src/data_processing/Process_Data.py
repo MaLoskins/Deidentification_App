@@ -250,7 +250,7 @@ class DataProcessor:
             if file_type == 'csv':
                 data = pd.read_csv(filepath, sep=',')  # Assuming comma-delimited values
                 self.logger.info(f"Successfully read CSV file: {filepath}")
-            elif file_type == 'pickle':
+            elif file_type == 'pkl':
                 data = pd.read_pickle(filepath)
                 self.logger.info(f"Successfully read Pickle file: {filepath}")
             else:

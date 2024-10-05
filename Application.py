@@ -4,7 +4,7 @@ import os
 import traceback
 import pandas as pd
 import streamlit as st
-from src.binning import DataBinner, KAnonymityBinner
+from src.binning import KAnonymityBinner
 from src.utils import (
     hide_streamlit_style,
     load_data,
@@ -16,8 +16,6 @@ from src.utils import (
     plot_density_plots_and_display,
     handle_download_binned_data,
     handle_download_k_binned_data,
-    handle_integrity_assessment,
-    handle_unique_identification_analysis,
     display_unique_identification_results,
     download_binned_data,
     perform_binning,
@@ -495,8 +493,6 @@ def unique_identification_analysis_tab():
     if not st.session_state.GLOBAL_DATA.empty:
         st.subheader('📊 Data Preview (Global Data)')
         st.dataframe(st.session_state.GLOBAL_DATA.head())
-        st.dataframe(st.session_state.GLOBAL_DATA[selected_columns_uniquetab].head())
-        st.dataframe(st.session_state.ORIGINAL_DATA[selected_columns_uniquetab].head())
 
         if not selected_columns_uniquetab:
             st.warning("⚠️ **No columns selected in Binning or Location Granulariser tabs for analysis.**")
@@ -516,18 +512,6 @@ def unique_identification_analysis_tab():
             original_for_assessment = st.session_state.ORIGINAL_DATA[existing_columns].astype('category').copy()
             data_for_assessment = st.session_state.GLOBAL_DATA[existing_columns].copy()
 
-            #display dtypes for columns in each dataframe
-            st.write("Original Data Types:")
-            st.write(original_for_assessment.dtypes)
-            st.write("Global Data Types:")
-            st.write(data_for_assessment.dtypes)
-            #get unique values for each column
-            st.write("Global Unique Values:")
-            for col in existing_columns:
-                st.write(f"Column: {col}")
-                st.write(f"Original: {original_for_assessment[col].nunique()}")
-                st.write(f"Global: {data_for_assessment[col].nunique()}")
-
             min_comb_size, max_comb_size, submit_button = unique_identification_section_ui(selected_columns_uniquetab)
 
             if submit_button:
@@ -543,7 +527,7 @@ def unique_identification_analysis_tab():
                     display_unique_identification_results(results)
                     update_session_state('is_unique_id_done', True)
                 # Perform integrity assessment
-                handle_integrity_assessment(original_for_assessment, data_for_assessment, existing_columns)
+                perform_integrity_assessment(original_for_assessment, data_for_assessment, existing_columns)
 
                 # Plot density distributions
                 plot_density_plots_and_display(
