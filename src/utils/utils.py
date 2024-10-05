@@ -10,6 +10,7 @@ import traceback
 from src.binning import DensityPlotter
 from src.binning import DataIntegrityAssessor
 from src.binning import UniqueBinIdentifier
+from src.binning import DataBinner
 from src.config import PROCESSED_DATA_DIR, REPORTS_DIR, PLOTS_DIR, UNIQUE_IDENTIFICATIONS_DIR, CAT_MAPPING_DIR, DATA_DIR
 
 # =====================================
@@ -149,6 +150,114 @@ def load_dataframe(file_path, file_type):
 # Binning Tab Utilities
 # =====================================
 
+def perform_binning(original_data, binning_method, bin_dict):
+    """Perform the binning process on selected columns."""
+    st.markdown("### 🔄 Binning Process")
+    try:
+        with st.spinner('Binning data...'):
+            binner = DataBinner(original_data, method=binning_method.lower())
+            binned_df, binned_columns = binner.bin_columns(bin_dict)
+            st.dataframe(binned_df.head())
+            st.write(f"binned columns: {binned_columns}")   
+            # Display the dtypes of columns selected using the original data
+            st.write(f"dtypes of columns selected: {original_data.dtypes}")
+            # Align both DataFrames (original and binned) to have the same columns
+            OG_Data_BinTab, Data_BinTab = align_dataframes(original_data, binned_df)
+
+    except Exception as e:
+        st.error(f"Error during binning: {e}")
+        st.error(traceback.format_exc())
+        st.stop()
+    
+    # Display data frames of OG_Data_BinTab and Data_BinTab
+    st.subheader('📊 Data Preview (Binned Data)')
+    st.dataframe(Data_BinTab.head())
+    st.dataframe(OG_Data_BinTab.head())
+
+    st.success("✅ Binning completed successfully!")
+
+    # Display binned columns categorization
+    st.markdown("### 🗂️ Binned Columns Categorization")
+    for dtype, cols in binned_columns.items():
+        if cols:
+            st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
+
+    return OG_Data_BinTab, Data_BinTab
+
+def perform_association_rule_mining(original_df, binned_df, selected_columns):
+    """Perform association rule mining on the selected columns of the original and binned DataFrames."""
+    original_df = original_df.astype('category')
+    binned_df = binned_df.astype('category')
+
+    st.markdown("### 📊 Association Rule Mining Results")
+    try:
+        # Filter to keep only the selected columns
+        original_df_filtered = original_df[selected_columns]
+        binned_df_filtered = binned_df[selected_columns]
+
+        # Check if the filtered DataFrames are empty
+        if original_df_filtered.empty or binned_df_filtered.empty:
+            st.warning("🔍 One or both of the DataFrames do not contain any data in the selected columns.")
+            return
+
+        from src.binning import DataIntegrityAssessor  # Import here to avoid circular imports
+        assessor = DataIntegrityAssessor(original_df_filtered, binned_df_filtered)
+
+        # Generate association rules
+        association_report, original_rules, binned_rules = assessor.generate_association_rules()
+        
+        # Check if rules were generated
+        if association_report.empty:
+            st.warning("No association rules were generated for the selected columns.")
+            return
+
+        # Summarize the association rules
+        summary_df = assessor.summarize_association_rules(original_rules, binned_rules)
+        st.subheader("📋 Summary of Association Rules")
+        st.dataframe(summary_df)
+
+        # Save the association report using the new method in the class
+        save_filepath = os.path.join(REPORTS_DIR, 'association_rules_report.csv')
+        association_report.to_csv(save_filepath, index=False)
+
+        # Save the original and binned rules
+        save_original_rules = os.path.join(REPORTS_DIR, 'original_rules.csv')
+        save_binned_rules = os.path.join(REPORTS_DIR, 'binned_rules.csv')
+        original_rules.to_csv(save_original_rules, index=False)
+        binned_rules.to_csv(save_binned_rules, index=False)
+
+    except Exception as e:
+        st.error(f"Error during association rule mining: {e}")
+        st.error(traceback.format_exc())
+
+
+def download_binned_data(data_full, data):
+    """Handle downloading of the binned data."""
+    if data is not None and isinstance(data, pd.DataFrame):
+        # Add Streamlit option to select original or full data
+        download_choice = st.radio(
+            "Choose data to download:",
+            options=["Only Binned Columns", "Full Data"],
+            index=0,
+            key='download_choice'
+        )
+        data_to_download = data_full if download_choice == "Full Data" else data
+    else:
+        data_to_download = None
+
+    if data_to_download is not None:
+        handle_download_binned_data(
+            data=data_to_download,
+            file_type_download=st.selectbox(
+                '📁 Download Format', 
+                ['csv', 'pkl'], 
+                index=0, 
+                key='download_file_type_download'
+            ),
+            save_dataframe_func=save_dataframe
+        )
+
+
 def get_binning_configuration(Data, selected_columns_binning):
     """
     Generates binning configuration sliders for selected columns.
@@ -246,11 +355,77 @@ def handle_download_binned_data(data, file_type_download='csv', save_dataframe_f
 # =====================================
 # Location Granulariser Tab Utilities
 # =====================================
-# Assume specific granularizer-related functions are in src.location_granularizer
+# In geocoding.py
 
 # =====================================
 # Unique Identification Analysis Tab Utilities
 # =====================================
+
+def perform_unique_identification_analysis(original_for_assessment, data_for_assessment, selected_columns_uniquetab, min_comb_size, max_comb_size):
+    """Handle the Unique Identification Analysis process."""
+    try:
+        with st.spinner('🔍 Analyzing unique identifications...'):
+            progress_bar = st.progress(0)
+
+            def update_progress(combination_counter, total_combinations):
+                progress = combination_counter / total_combinations
+                st.session_state.progress = min(progress, 1.0)
+                progress_bar.progress(st.session_state.progress)
+
+            identifier = UniqueBinIdentifier(original_df=original_for_assessment, binned_df=data_for_assessment)
+            results = identifier.find_unique_identifications(
+                min_comb_size=min_comb_size, 
+                max_comb_size=max_comb_size, 
+                columns=selected_columns_uniquetab,
+                progress_callback=update_progress
+            )
+            progress_bar.empty()
+            return results
+    except Exception as e:
+        st.error(f"Error during unique identification analysis: {e}")
+        st.error(traceback.format_exc())
+        return None
+
+def display_unique_identification_results(results):
+    """
+    Displays the unique identification analysis results and provides download options.
+    """
+    if results is not None:
+        st.success("✅ Unique Identification Analysis Completed!")
+        st.write("📄 **Unique Identification Results:**")
+        st.dataframe(results)
+
+        unique_id_filename = 'unique_identifications.csv'
+        unique_id_path = save_dataframe(results, 'csv', unique_id_filename, 'unique_identifications')
+        
+        csv = results.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Results as CSV",
+            data=csv,
+            file_name='unique_identifications.csv',
+            mime='text/csv',
+        )
+
+def display_unique_identification_results(results):
+    """
+    Displays the unique identification analysis results and provides download options.
+    """
+    if results is not None:
+        st.success("✅ Unique Identification Analysis Completed!")
+        st.write("📄 **Unique Identification Results:**")
+        st.dataframe(results)
+
+        unique_id_filename = 'unique_identifications.csv'
+        unique_id_path = save_dataframe(results, 'csv', unique_id_filename, 'unique_identifications')
+        
+        csv = results.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Results as CSV",
+            data=csv,
+            file_name='unique_identifications.csv',
+            mime='text/csv',
+        )
+
 
 def handle_unique_identification_analysis(original_df, binned_df, columns_list, min_comb_size, max_comb_size):
     """
@@ -336,6 +511,14 @@ def handle_download_k_binned_data(data, file_type_download='csv', save_dataframe
 # Integrity and Assessment Utilities
 # =====================================
 
+def perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning):
+    """Assess data integrity after binning."""
+    original_for_assessment = OG_Data_BinTab[selected_columns_binning].astype('category')
+    data_for_assessment = Data_BinTab[selected_columns_binning]
+
+    handle_integrity_assessment(original_for_assessment, data_for_assessment, PLOTS_DIR)
+
+
 def handle_integrity_assessment(original_df, binned_df, plots_dir):
     """
     Handles the integrity assessment process, including generating reports and plotting entropy.
@@ -351,22 +534,31 @@ def handle_integrity_assessment(original_df, binned_df, plots_dir):
         st.markdown("### 📄 Integrity Loss Report")
         st.dataframe(report)
         st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
-        plot_entropy_and_display(assessor, plots_dir)
+        plot_entropy_and_display(assessor)
         st.dataframe(original_df)
     except Exception as e:
         st.error(f"Error during integrity assessment: {e}")
         st.error(traceback.format_exc())
 
-def plot_entropy_and_display(assessor, plots_dir):
+def plot_entropy_and_display(assessor):
     """ 
     Plots the entropy and displays it in Streamlit.
     """
     st.markdown("### 📈 Entropy")
     try:
+        # Get the figure object from assessor
         fig_entropy = assessor.plot_entropy(figsize=(15, 4))
-        entropy_plot_path = os.path.join(plots_dir, 'entropy_plot.png')
+        
+        # Build the path for saving the plot
+        entropy_plot_path = os.path.join(PLOTS_DIR, 'entropy_plot.png')
+        
+        # Save the figure using the correct path
         fig_entropy.savefig(entropy_plot_path, bbox_inches='tight')
+        
+        # Display the plot in Streamlit
         st.pyplot(fig_entropy)
+        
+        # Close the plot after saving and displaying
         plt.close(fig_entropy)
     except Exception as e:
         st.error(f"Error plotting entropy: {e}")

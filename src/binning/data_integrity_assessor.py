@@ -115,12 +115,15 @@ class DataIntegrityAssessor:
             self.assess_integrity_loss()
         return self.overall_loss
 
-    def generate_association_rules(self, min_support: float = 0.0005, min_threshold: float = 0.0005) -> pd.DataFrame:
-        original_df_onehot = pd.get_dummies(self.original_df, dtype=int)
-        binned_df_onehot = pd.get_dummies(self.binned_df, dtype=int)
+    def generate_association_rules(self, min_support: float = 0.001, min_threshold: float = 0.001) -> pd.DataFrame:
+        # Convert to boolean data type to avoid warnings
+        original_df_onehot = pd.get_dummies(self.original_df, dtype=bool)
+        binned_df_onehot = pd.get_dummies(self.binned_df, dtype=bool)
 
-        original_df_onehot, binned_df_onehot = original_df_onehot.align(binned_df_onehot, fill_value=0, axis=1)
+        # Align the original and binned data so both have the same columns
+        original_df_onehot, binned_df_onehot = original_df_onehot.align(binned_df_onehot, fill_value=False, axis=1)
 
+        # Apply Apriori algorithm to find frequent itemsets
         original_frequent_itemsets = apriori(original_df_onehot, min_support=min_support, use_colnames=True)
         binned_frequent_itemsets = apriori(binned_df_onehot, min_support=min_support, use_colnames=True)
 
@@ -128,6 +131,7 @@ class DataIntegrityAssessor:
             print("No frequent itemsets generated for original or binned data.")
             return pd.DataFrame(columns=['antecedents', 'consequents', 'support', 'confidence', 'lift']), pd.DataFrame(), pd.DataFrame()
 
+        # Generate association rules based on lift metric
         original_rules = association_rules(original_frequent_itemsets, metric="lift", min_threshold=min_threshold)
         binned_rules = association_rules(binned_frequent_itemsets, metric="lift", min_threshold=min_threshold)
 
@@ -135,6 +139,7 @@ class DataIntegrityAssessor:
             print("No association rules generated.")
             return pd.DataFrame(columns=['Original Rules', 'Binned Rules']), pd.DataFrame(), pd.DataFrame()
 
+        # Combine original and binned rules for comparison
         combined_rules = {
             'Original Rules': original_rules['antecedents'].astype(str) + " -> " + original_rules['consequents'].astype(str),
             'Binned Rules': binned_rules['antecedents'].astype(str) + " -> " + binned_rules['consequents'].astype(str)

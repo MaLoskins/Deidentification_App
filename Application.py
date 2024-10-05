@@ -18,7 +18,12 @@ from src.utils import (
     handle_download_k_binned_data,
     handle_integrity_assessment,
     handle_unique_identification_analysis,
-    display_unique_identification_results
+    display_unique_identification_results,
+    download_binned_data,
+    perform_binning,
+    perform_integrity_assessment,
+    perform_association_rule_mining,
+    perform_unique_identification_analysis
 )
 
 from src.config import (
@@ -51,6 +56,7 @@ def initialize_session_state():
     """Initialize all necessary session state variables."""
     default_session_state = {
         # Original Data
+        'UPLOADED_ORIGINAL_DATA': pd.DataFrame(),
         'ORIGINAL_DATA': pd.DataFrame(),
         'GLOBAL_DATA': pd.DataFrame(),
         
@@ -61,7 +67,6 @@ def initialize_session_state():
         
         # Location Granularizer Session States
         'Location_Selected_Columns': [],
-        'Granular_Location_Column_Set': False,
         'geocoded_data': pd.DataFrame(),
         'geocoded_dict': {},
         
@@ -112,7 +117,6 @@ def setup_page():
     )
     hide_streamlit_style()
     st.title('🛠️ De-Identification of Privileged Data (Generalisation Methodology)')
-
 
 def sidebar_inputs():
     """Render the sidebar with file upload, settings, binning options, and info."""
@@ -189,10 +193,7 @@ def load_and_preview_data(uploaded_file, input_file_type):
     # Clean column names by removing '\' and '/'
     Data.columns = Data.columns.str.replace(r'[\\/]', '', regex=True)
 
-    update_session_state('ORIGINAL_DATA', Data.copy())
-    st.subheader('📊 Data Preview (Original Data)')
-    st.dataframe(st.session_state.ORIGINAL_DATA.head())
-
+    update_session_state('UPLOADED_ORIGINAL_DATA', Data.copy())
 
 def save_raw_data(Data, output_file_type):
     """Save the raw data to a CSV or Pickle file."""
@@ -212,131 +213,15 @@ def save_raw_data(Data, output_file_type):
 # Binning Tab Functionality
 # =====================================
 
-def perform_binning(original_data, selected_columns_binning, binning_method, bins):
-    """Perform the binning process on selected columns."""
-    st.markdown("### 🔄 Binning Process")
-    try:
-        with st.spinner('Binning data...'):
-            binner = DataBinner(original_data, method=binning_method.lower())
-            binned_df, binned_columns = binner.bin_columns(bins)
-
-            # Align both DataFrames (original and binned) to have the same columns
-            OG_Data_BinTab, Data_BinTab = align_dataframes(original_data, binned_df)
-
-    except Exception as e:
-        st.error(f"Error during binning: {e}")
-        st.error(traceback.format_exc())
-        st.stop()
-
-    st.success("✅ Binning completed successfully!")
-
-    # Display binned columns categorization
-    st.markdown("### 🗂️ Binned Columns Categorization")
-    for dtype, cols in binned_columns.items():
-        if cols:
-            st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
-
-    return OG_Data_BinTab, Data_BinTab
-
-def perform_association_rule_mining(original_df, binned_df, selected_columns):
-    """Perform association rule mining on the selected columns of the original and binned DataFrames."""
-    original_df = original_df.astype('category')
-    binned_df = binned_df.astype('category')
-
-    st.markdown("### 📊 Association Rule Mining Results")
-    try:
-        # Filter to keep only the selected columns
-        original_df_filtered = original_df[selected_columns]
-        binned_df_filtered = binned_df[selected_columns]
-
-        # Check if the filtered DataFrames are empty
-        if original_df_filtered.empty or binned_df_filtered.empty:
-            st.warning("🔍 One or both of the DataFrames do not contain any data in the selected columns.")
-            return
-
-        from src.binning import DataIntegrityAssessor  # Import here to avoid circular imports
-        assessor = DataIntegrityAssessor(original_df_filtered, binned_df_filtered)
-
-        # Generate association rules
-        association_report, original_rules, binned_rules = assessor.generate_association_rules()
-        
-        # Check if rules were generated
-        if association_report.empty:
-            st.warning("No association rules were generated for the selected columns.")
-            return
-
-        # Summarize the association rules
-        summary_df = assessor.summarize_association_rules(original_rules, binned_rules)
-        st.subheader("📋 Summary of Association Rules")
-        st.dataframe(summary_df)
-
-        # Save the association report using the new method in the class
-        save_filepath = os.path.join(REPORTS_DIR, 'association_rules_report.csv')
-        association_report.to_csv(save_filepath, index=False)
-
-        # Save the original and binned rules
-        save_original_rules = os.path.join(REPORTS_DIR, 'original_rules.csv')
-        save_binned_rules = os.path.join(REPORTS_DIR, 'binned_rules.csv')
-        original_rules.to_csv(save_original_rules, index=False)
-        binned_rules.to_csv(save_binned_rules, index=False)
-
-    except Exception as e:
-        st.error(f"Error during association rule mining: {e}")
-        st.error(traceback.format_exc())
-
-def perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning):
-    """Assess data integrity after binning."""
-    original_for_assessment = OG_Data_BinTab[selected_columns_binning].astype('category')
-    data_for_assessment = Data_BinTab[selected_columns_binning]
-
-    # Log unique values
-    st.write("Original Unique Values:")
-    st.write(original_for_assessment.nunique())
-
-    st.write("Binned Unique Values:")
-    st.write(data_for_assessment.nunique())
-    handle_integrity_assessment(original_for_assessment, data_for_assessment, PLOTS_DIR)
-
-def download_binned_data(data_full, data):
-    """Handle downloading of the binned data."""
-    if data is not None and isinstance(data, pd.DataFrame):
-        # Add Streamlit option to select original or full data
-        download_choice = st.radio(
-            "Choose data to download:",
-            options=["Only Binned Columns", "Full Data"],
-            index=0,
-            key='download_choice'
-        )
-        data_to_download = data_full if download_choice == "Full Data" else data
-    else:
-        data_to_download = None
-
-    if data_to_download is not None:
-        handle_download_binned_data(
-            data=data_to_download,
-            file_type_download=st.selectbox(
-                '📁 Download Format', 
-                ['csv', 'pkl'], 
-                index=0, 
-                key='download_file_type_download'
-            ),
-            save_dataframe_func=save_dataframe
-        )
-
 def binning_tab():
     """Render the Binning Tab in the Streamlit app."""
     st.header("📊 Manual Binning")
     
     st.dataframe(st.session_state.ORIGINAL_DATA.head())
-    original_data = st.session_state.ORIGINAL_DATA
-    location_selected = set(st.session_state.Location_Selected_Columns)
+    original_data = st.session_state.ORIGINAL_DATA.copy()
     
     # Determine available columns by excluding those selected in Location Granulariser
-    available_columns = list(
-        set(original_data.select_dtypes(
-            include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]', 'category']
-        ).columns) - location_selected
-    )
+    available_columns = list(set(original_data.select_dtypes(include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]', 'category']).columns))
     
     # Multiselect widget for selecting columns to bin
     selected_columns_binning = st.multiselect(
@@ -346,7 +231,8 @@ def binning_tab():
         key='binning_columns_form'
     )
     update_session_state('Binning_Selected_Columns', selected_columns_binning)
-
+    # Button to start binning
+    
     # Configure bins if columns are selected
     if selected_columns_binning:
         bins = get_binning_configuration(original_data, selected_columns_binning)
@@ -363,11 +249,9 @@ def binning_tab():
             # Perform binning operation
             OG_Data_BinTab, Data_BinTab = perform_binning(
                 original_data,
-                selected_columns_binning,
                 st.session_state.Binning_Method,
                 bins
             )
-
             # Assess data integrity post-binning
             perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
 
@@ -402,6 +286,43 @@ def binning_tab():
 # Location Granulariser Tab Functionality
 # =====================================
 
+def location_granulariser_tab():
+    """Render the Location Granulariser Tab in the Streamlit app."""
+    st.header("📍 Location Data Geocoding Granulariser")
+    
+    # Geocoding process
+    st.header("1️⃣ Geocoding")
+
+    geocoded_data = st.session_state.geocoded_data.copy() if not st.session_state.geocoded_data.empty else st.session_state.ORIGINAL_DATA.copy()
+    st.dataframe(geocoded_data.head())
+
+    selected_geo_columns = setup_geocoding_options_ui(geocoded_data)
+
+    preprocess_button = st.button("📂 Start Geocoding")
+    if preprocess_button:
+        perform_geocoding_process(selected_geo_columns, geocoded_data)
+
+    # Granular location generation
+    st.header("2️⃣ Granular Location Generation")
+
+    granularity_options = ["address", "suburb", "city", "state", "country", "continent"]
+    granularity = st.selectbox(
+        "Select Location Granularity",
+        options=granularity_options,
+        help="Choose the level of granularity for location identification."
+    )
+    generate_granular_button = st.button("📈 Generate Granular Location Column")
+    if generate_granular_button:
+        perform_granular_location_generation(granularity, selected_geo_columns)
+        update_session_state('Location_Selected_Columns', selected_geo_columns.copy())
+
+    # Display geocoded data with granular location
+    display_geocoded_with_granular_data()
+    
+    # Map display
+    if not st.session_state.geocoded_data.empty:
+        map_section()
+
 def setup_geocoding_options_ui(geocoded_data: pd.DataFrame) -> list:
     """Render the UI for selecting a single column to geocode."""
     detected_geo_columns = detect_geographical_columns(geocoded_data)
@@ -417,7 +338,6 @@ def setup_geocoding_options_ui(geocoded_data: pd.DataFrame) -> list:
     )
 
     return [selected_geo_column]  # Return as a list for consistency
-
 
 def perform_geocoding_process(selected_geo_columns, geocoded_data):
     """Perform geocoding on the selected columns."""
@@ -445,7 +365,6 @@ def perform_geocoding_process(selected_geo_columns, geocoded_data):
             st.error(f"❌ An unexpected error occurred during geocoding: {e}")
             st.error(traceback.format_exc())
             st.stop()
-
 
 def perform_granular_location_generation(granularity, selected_geo_columns):
     """Perform granular location generation."""
@@ -493,45 +412,6 @@ def perform_granular_location_generation(granularity, selected_geo_columns):
         except Exception as e:
             st.error(f"❌ Error during granular location generation: {e}")
             st.error(traceback.format_exc())
-
-
-
-def location_granulariser_tab():
-    """Render the Location Granulariser Tab in the Streamlit app."""
-    st.header("📍 Location Data Geocoding Granulariser")
-    
-    # Geocoding process
-    st.header("1️⃣ Geocoding")
-
-    geocoded_data = st.session_state.geocoded_data.copy() if not st.session_state.geocoded_data.empty else st.session_state.ORIGINAL_DATA.copy()
-    st.dataframe(geocoded_data.head())
-
-    selected_geo_columns = setup_geocoding_options_ui(geocoded_data)
-
-    preprocess_button = st.button("📂 Start Geocoding")
-    if preprocess_button:
-        perform_geocoding_process(selected_geo_columns, geocoded_data)
-
-    # Granular location generation
-    st.header("2️⃣ Granular Location Generation")
-
-    granularity_options = ["address", "suburb", "city", "state", "country", "continent"]
-    granularity = st.selectbox(
-        "Select Location Granularity",
-        options=granularity_options,
-        help="Choose the level of granularity for location identification."
-    )
-    generate_granular_button = st.button("📈 Generate Granular Location Column")
-    if generate_granular_button:
-        perform_granular_location_generation(granularity, selected_geo_columns)
-        update_session_state('Location_Selected_Columns', selected_geo_columns.copy())
-
-    # Display geocoded data with granular location
-    display_geocoded_with_granular_data()
-    
-    # Map display
-    if not st.session_state.geocoded_data.empty:
-        map_section()
 
 def display_geocoded_with_granular_data():
     """Display geocoded data with granular location and provide download options."""
@@ -584,10 +464,96 @@ def map_section():
         st.error(f"❌ An unexpected error occurred while preparing the map: {e}")
         st.error(traceback.format_exc())
 
-
 # =====================================
 # Unique Identification Analysis Tab Functionality
 # =====================================
+
+def unique_identification_analysis_tab():
+    """Render the Unique Identification Analysis Tab in the Streamlit app."""
+    st.header("🔍 Unique Identification Analysis")
+    st.markdown("### 🔢 Selected Columns for Analysis")
+
+    selected_columns_uniquetab = []
+
+    # Combine selections from Binning and Location Granulariser
+    if st.session_state.Binning_Selected_Columns and st.session_state.Location_Selected_Columns:
+        granular_columns = st.session_state.Location_Selected_Columns
+        selected_columns_uniquetab = st.session_state.Binning_Selected_Columns + granular_columns
+        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
+    elif st.session_state.Binning_Selected_Columns:
+        selected_columns_uniquetab = st.session_state.Binning_Selected_Columns
+        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
+    elif st.session_state.Location_Selected_Columns:
+        granular_columns = st.session_state.Location_Selected_Columns
+        selected_columns_uniquetab = granular_columns
+        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
+    else:
+        selected_columns_uniquetab = None
+        st.info("👉 **Please use the Binning and/or Location Granulariser tabs to select columns for analysis.**")
+
+    # Display global data if available
+    if not st.session_state.GLOBAL_DATA.empty:
+        st.subheader('📊 Data Preview (Global Data)')
+        st.dataframe(st.session_state.GLOBAL_DATA.head())
+        st.dataframe(st.session_state.GLOBAL_DATA[selected_columns_uniquetab].head())
+        st.dataframe(st.session_state.ORIGINAL_DATA[selected_columns_uniquetab].head())
+
+        if not selected_columns_uniquetab:
+            st.warning("⚠️ **No columns selected in Binning or Location Granulariser tabs for analysis.**")
+            st.info("🔄 **Please select columns in the Binning tab and/or generate granular location data to perform Unique Identification Analysis.**")
+        else:
+            # Verify that selected_columns_uniquetab exist in both ORIGINAL_DATA and GLOBAL_DATA
+            existing_columns = [col for col in selected_columns_uniquetab if col in st.session_state.GLOBAL_DATA.columns and col in st.session_state.ORIGINAL_DATA.columns]
+            missing_in_global = [col for col in selected_columns_uniquetab if col not in st.session_state.GLOBAL_DATA.columns]
+            missing_in_original = [col for col in selected_columns_uniquetab if col not in st.session_state.ORIGINAL_DATA.columns]
+
+            if missing_in_global or missing_in_original:
+                if missing_in_global: st.error(f"The following selected columns are missing from Global Data: {', '.join(missing_in_global)}. Please check your selections.")
+                if missing_in_original: st.error(f"The following selected columns are missing from Original Data: {', '.join(missing_in_original)}. Please check your selections.")
+                st.stop()
+
+            # Proceed with the unique identification analysis
+            original_for_assessment = st.session_state.ORIGINAL_DATA[existing_columns].astype('category').copy()
+            data_for_assessment = st.session_state.GLOBAL_DATA[existing_columns].copy()
+
+            #display dtypes for columns in each dataframe
+            st.write("Original Data Types:")
+            st.write(original_for_assessment.dtypes)
+            st.write("Global Data Types:")
+            st.write(data_for_assessment.dtypes)
+            #get unique values for each column
+            st.write("Global Unique Values:")
+            for col in existing_columns:
+                st.write(f"Column: {col}")
+                st.write(f"Original: {original_for_assessment[col].nunique()}")
+                st.write(f"Global: {data_for_assessment[col].nunique()}")
+
+            min_comb_size, max_comb_size, submit_button = unique_identification_section_ui(selected_columns_uniquetab)
+
+            if submit_button:
+                results = perform_unique_identification_analysis(
+                    original_for_assessment=original_for_assessment,
+                    data_for_assessment=data_for_assessment,
+                    selected_columns_uniquetab=existing_columns,
+                    min_comb_size=min_comb_size,
+                    max_comb_size=max_comb_size
+                )
+                if results is not None:
+                    update_session_state('Unique_ID_Results', results)
+                    display_unique_identification_results(results)
+                    update_session_state('is_unique_id_done', True)
+                # Perform integrity assessment
+                handle_integrity_assessment(original_for_assessment, data_for_assessment, existing_columns)
+
+                # Plot density distributions
+                plot_density_plots_and_display(
+                    original_for_assessment,
+                    data_for_assessment,
+                    existing_columns,
+                    PLOTS_DIR
+                )
+    else:
+        st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
 
 def unique_identification_section_ui(selected_columns_uniquetab):
     """Render the UI for Unique Identification Analysis."""
@@ -618,125 +584,11 @@ def unique_identification_section_ui(selected_columns_uniquetab):
 
     return min_comb_size, max_comb_size, submit_button
 
-def perform_unique_identification_analysis(original_for_assessment, data_for_assessment, selected_columns_uniquetab, min_comb_size, max_comb_size):
-    """Handle the Unique Identification Analysis process."""
-    try:
-        results = handle_unique_identification_analysis(
-            original_df=original_for_assessment,
-            binned_df=data_for_assessment,
-            columns_list=selected_columns_uniquetab,
-            min_comb_size=min_comb_size,
-            max_comb_size=max_comb_size
-        )
-        update_session_state('Unique_ID_Results', results)
-        display_unique_identification_results(results)
-        update_session_state('is_unique_id_done', True)
-    except Exception as e:
-        st.error(f"❌ Error during unique identification analysis: {e}")
-        st.error(traceback.format_exc())
-
-def unique_identification_analysis_tab():
-    """Render the Unique Identification Analysis Tab in the Streamlit app."""
-    st.header("🔍 Unique Identification Analysis")
-    st.markdown("### 🔢 Selected Columns for Analysis")
-
-    selected_columns_uniquetab = []
-
-    # Combine selections from Binning and Location Granulariser
-    if st.session_state.Binning_Selected_Columns and st.session_state.Location_Selected_Columns:
-        granular_columns = st.session_state.Location_Selected_Columns
-        selected_columns_uniquetab = st.session_state.Binning_Selected_Columns + granular_columns
-        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
-    elif st.session_state.Binning_Selected_Columns:
-        selected_columns_uniquetab = st.session_state.Binning_Selected_Columns
-        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
-    elif st.session_state.Location_Selected_Columns:
-        granular_columns = st.session_state.Location_Selected_Columns
-        selected_columns_uniquetab = granular_columns
-        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
-    else:
-        selected_columns_uniquetab = None
-        st.info("👉 **Please use the Binning and/or Location Granulariser tabs to select columns for analysis.**")
-
-    # Display global data if available
-    if not st.session_state.GLOBAL_DATA.empty:
-        st.subheader('📊 Data Preview (Global Data)')
-        st.dataframe(st.session_state.GLOBAL_DATA.head())
-
-        if not selected_columns_uniquetab:
-            st.warning("⚠️ **No columns selected in Binning or Location Granulariser tabs for analysis.**")
-            st.info("🔄 **Please select columns in the Binning tab and/or generate granular location data to perform Unique Identification Analysis.**")
-        else:
-            # Verify that selected_columns_uniquetab exist in both ORIGINAL_DATA and GLOBAL_DATA
-            existing_columns = [col for col in selected_columns_uniquetab if col in st.session_state.GLOBAL_DATA.columns and col in st.session_state.ORIGINAL_DATA.columns]
-            missing_in_global = [col for col in selected_columns_uniquetab if col not in st.session_state.GLOBAL_DATA.columns]
-            missing_in_original = [col for col in selected_columns_uniquetab if col not in st.session_state.ORIGINAL_DATA.columns]
-
-            if missing_in_global or missing_in_original:
-                if missing_in_global: st.error(f"The following selected columns are missing from Global Data: {', '.join(missing_in_global)}. Please check your selections.")
-                if missing_in_original: st.error(f"The following selected columns are missing from Original Data: {', '.join(missing_in_original)}. Please check your selections.")
-                st.stop()
-
-            # Proceed with the unique identification analysis
-            original_for_assessment = st.session_state.ORIGINAL_DATA[existing_columns].copy()
-            data_for_assessment = st.session_state.GLOBAL_DATA[existing_columns].copy()
-
-            min_comb_size, max_comb_size, submit_button = unique_identification_section_ui(selected_columns_uniquetab)
-
-            if submit_button:
-                perform_unique_identification_analysis(
-                    original_for_assessment=original_for_assessment.astype('category'),
-                    data_for_assessment=data_for_assessment.astype('category'),
-                    selected_columns_uniquetab=existing_columns,
-                    min_comb_size=min_comb_size,
-                    max_comb_size=max_comb_size
-                )
-
-                # Perform integrity assessment
-                perform_integrity_assessment(original_for_assessment, data_for_assessment, existing_columns)
-
-                # Plot density distributions
-                plot_density_plots_and_display(
-                    original_for_assessment,
-                    data_for_assessment,
-                    existing_columns,
-                    PLOTS_DIR
-                )
-    else:
-        st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
-
 # =====================================
 # K-Anonymity Binning Tab Functionality
 # =====================================
 
-def download_k_anon_binned_data(data_full, data):
-    """Handle downloading of the binned data."""
-    if data is not None and isinstance(data, pd.DataFrame):
-        # Add Streamlit option to select original or full data
-        k_download_choice = st.radio(
-            "Choose data to download:",
-            options=["Only Binned Columns", "Full Data"],
-            index=0,
-            key='k_anon_download_choice'
-        )
-        k_data_to_download = data_full if k_download_choice == "Full Data" else data
-    else:
-        k_data_to_download = None
-
-    if k_data_to_download is not None:
-        handle_download_k_binned_data(
-            data=k_data_to_download,
-            file_type_download=st.selectbox(
-                '📁 Download Format', 
-                ['csv', 'pkl'], 
-                index=0, 
-                key='k_anon_download_file_type_download'
-            ),
-            save_dataframe_func=save_dataframe
-        )
-
 def k_anonymity_binning_tab():
-
     """Render the K-Anonymity Binning Tab in the Streamlit app."""
     st.header("🔒 K-Anonymity Binning")
 
@@ -770,12 +622,8 @@ def k_anonymity_binning_tab():
             try:
                 with st.spinner('Performing k-anonymity binning...'):
                     # Initialize KAnonymityBinner and perform binning
-                    binner = KAnonymityBinner(
-                        data=original_data[selected_columns_k_anonymity],
-                        k=k_value,
-                        method=st.session_state.Binning_Method.lower()
-                    )
-                    binned_data = binner.perform_binning()
+                    k_anon_binner = KAnonymityBinner(original_data[selected_columns_k_anonymity], k=k_value, method = st.session_state.Binning_Method)
+                    binned_data = k_anon_binner.perform_binning()
 
                     # Update GLOBAL_DATA with the binned columns
                     st.session_state.GLOBAL_DATA[selected_columns_k_anonymity] = binned_data[selected_columns_k_anonymity]
@@ -785,11 +633,15 @@ def k_anonymity_binning_tab():
                     st.dataframe(binned_data.head())
 
                     # Provide option to download the k-anonymity binned data
-                    download_k_anon_binned_data(binned_data, binned_data[selected_columns_k_anonymity])
-
-                    # Update GLOBAL_DATA with the binned columns
-                    st.session_state.GLOBAL_DATA[selected_columns_k_anonymity] = binned_data[selected_columns_k_anonymity]
-                    update_session_state('GLOBAL_DATA', st.session_state.GLOBAL_DATA)
+                    handle_download_k_binned_data(
+                        data=binned_data,
+                        file_type_download=st.selectbox(
+                            '📁 Download Format', 
+                            ['csv', 'pkl'], 
+                            index=0, 
+                            key='k_anon_download_file_type_download'
+                        )
+                    )
 
             except Exception as e:
                 st.error(f"Error during k-anonymity binning: {e}")
@@ -821,7 +673,7 @@ def main():
             st.stop()
 
         load_and_preview_data(uploaded_file, input_file_type)
-        mapped_save_type, file_path = save_raw_data(st.session_state.ORIGINAL_DATA, output_file_type)
+        mapped_save_type, file_path = save_raw_data(st.session_state.UPLOADED_ORIGINAL_DATA, output_file_type)
 
         """Run the data processing pipeline."""
         processed_data = run_processing(
@@ -832,6 +684,9 @@ def main():
 
         update_session_state('ORIGINAL_DATA', processed_data.copy())
 
+        if not st.session_state.ORIGINAL_DATA.empty:
+                st.subheader('📊 Data Preview (Original Data)')
+                st.dataframe(st.session_state.ORIGINAL_DATA.head())
         # Reset processing flags upon new upload
         processing_flags = ['is_binning_done', 'is_geocoding_done', 'is_granular_location_done', 'is_unique_id_done']
         for flag in processing_flags:

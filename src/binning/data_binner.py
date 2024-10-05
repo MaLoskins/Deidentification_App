@@ -2,6 +2,7 @@
 
 import pandas as pd
 from typing import Tuple, Dict, List
+import math
 
 class DataBinner:
     """
@@ -18,6 +19,7 @@ class DataBinner:
             'datetime': [],
             'integer': [],
             'float': [],
+            'category_grouped': [],
             'unsupported': []
         }
         self.method = method.lower()
@@ -43,9 +45,11 @@ class DataBinner:
             'datetime': [],
             'integer': [],
             'float': [],
+            'category_grouped': [],
             'unsupported': []
         }
-
+        import streamlit as st
+        st.write(f"bin_dict: {bin_dict}")
         # Create a copy of the DataFrame to avoid modifying the original data
         Bin_Data = self.original_df.copy()
 
@@ -67,7 +71,11 @@ class DataBinner:
                 elif pd.api.types.is_float_dtype(Bin_Data[col]):
                     Bin_Data[col] = self._bin_column(Bin_Data[col], bins, self.method)
                     self.binned_columns['float'].append(col)
-
+                
+                elif pd.api.types.is_categorical_dtype(Bin_Data[col]) or pd.api.types.is_object_dtype(Bin_Data[col]):
+                    # Group categorical columns into specified number of bins
+                    Bin_Data[col] = self._bin_categorical_column(Bin_Data[col], bins)
+                    self.binned_columns['category_grouped'].append(col)
                 else:
                     print(f"Column '{col}' has unsupported dtype '{Bin_Data[col].dtype}'. Skipping.")
                     self.binned_columns['unsupported'].append(col)
@@ -80,6 +88,8 @@ class DataBinner:
                     print(f"Failed to bin integer column '{col}': {e}")
                 elif pd.api.types.is_float_dtype(Bin_Data[col]):
                     print(f"Failed to bin float column '{col}': {e}")
+                elif pd.api.types.is_categorical_dtype(Bin_Data[col]) or pd.api.types.is_object_dtype(Bin_Data[col]):
+                    print(f"Failed to bin category column '{col}': {e}")
                 else:
                     print(f"Failed to bin column '{col}': {e}")
                 self.binned_columns['unsupported'].append(col)
@@ -88,7 +98,8 @@ class DataBinner:
         successfully_binned = (
             self.binned_columns['datetime'] +
             self.binned_columns['integer'] +
-            self.binned_columns['float']
+            self.binned_columns['float'] +
+            self.binned_columns['category_grouped']
         )
         self.binned_df = Bin_Data[successfully_binned]
 
@@ -106,25 +117,88 @@ class DataBinner:
         Returns:
             pd.Series: The binned column as a categorical Series.
         """
-        if method == 'equal width':
-            binned = pd.cut(
-                series,
-                bins=bins,
-                labels=False,
-                duplicates='drop'
-            )
-        elif method == 'quantile':
-            binned = pd.qcut(
-                series,
-                q=bins,
-                labels=False,
-                duplicates='drop'
-            )
-        else:
-            # This should not happen due to validation in __init__
-            raise ValueError(f"Unsupported binning method '{method}'.")
+        unique_values = series.nunique(dropna=True)
+        print(f"Column '{series.name}': {unique_values} unique values requested {bins} bins.")
 
-        return (binned).astype('category')
+        if bins > unique_values:
+            print(f"⚠️ Requested bin count {bins} exceeds unique values {unique_values} for column '{series.name}'. Adjusting bin count to {unique_values}.")
+            bins = unique_values
+
+        if bins == unique_values:
+            # Assign each unique value to its own bin
+            # This ensures each unique float value is in a separate bin
+            print(f"Assigning each unique value in column '{series.name}' to its own bin.")
+            # Create a mapping from unique value to a unique bin number
+            sorted_unique = series.dropna().unique()
+            sorted_unique.sort()
+            value_to_bin = {value: idx for idx, value in enumerate(sorted_unique)}
+            binned_series = series.map(value_to_bin).astype('category')
+            return binned_series
+        else:
+            if method == 'equal width':
+                binned = pd.cut(
+                    series,
+                    bins=bins,
+                    labels=False,
+                    duplicates='drop'
+                )
+            elif method == 'quantile':
+                # Handle case where number of unique values is less than bins for quantile
+                if unique_values < bins:
+                    print(f"⚠️ Not enough unique values for quantile binning on column '{series.name}'. Using {unique_values} bins instead of {bins}.")
+                    bins = unique_values
+                binned = pd.qcut(
+                    series,
+                    q=bins,
+                    labels=False,
+                    duplicates='drop'
+                )
+            else:
+                # This should not happen due to validation in __init__
+                raise ValueError(f"Unsupported binning method '{method}'.")
+
+            # After binning, check if the number of unique bins matches the requested bins
+            actual_bins = binned.nunique(dropna=True)
+            print(f"Column '{series.name}': Requested {bins} bins, but got {actual_bins} unique binned values.")
+
+            return binned.astype('category')
+
+    def _bin_categorical_column(self, series: pd.Series, bins: int) -> pd.Series:
+        """
+        Groups categorical column into specified number of bins based on frequency.
+
+        Parameters:
+            series (pd.Series): The categorical column to bin.
+            bins (int): The desired number of bins (groups).
+
+        Returns:
+            pd.Series: The binned categorical column.
+        """
+        if not pd.api.types.is_categorical_dtype(series):
+            series = series.astype('category')
+
+        category_counts = series.value_counts().sort_values(ascending=False)
+        unique_categories = len(category_counts)
+
+        if bins >= unique_categories:
+            print(f"⚠️ Requested bin count {bins} is greater than or equal to unique categories {unique_categories} for column '{series.name}'. No binning applied.")
+            return series
+
+        # Calculate the number of categories per bin
+        categories_per_bin = math.ceil(unique_categories / bins)
+        grouped_categories = []
+        current_bin = 1
+        for i, category in enumerate(category_counts.index):
+            if (i > 0) and (i % categories_per_bin == 0) and (current_bin < bins):
+                current_bin += 1
+            grouped_categories.append((category, current_bin))
+
+        # Create a mapping from category to bin number
+        category_to_bin = dict(grouped_categories)
+        binned_series = series.map(category_to_bin).astype('category')
+        binned_series.name = series.name
+
+        return binned_series
 
     def get_binned_data(self) -> pd.DataFrame:
         """
