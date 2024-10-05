@@ -36,3 +36,7 @@ __pycache__/
 
 # Ignore outputs folder and subfolders
 outputs/
+
+# Ignore extract.py
+extract.py
+FileName_Contents.txt
