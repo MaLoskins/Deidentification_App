@@ -29,28 +29,27 @@ def get_binning_configuration(Data, selected_columns_binning):
     return bins
 
 def perform_binning(original_data, binning_method, bin_dict):
-    """Perform the binning process on selected columns."""
+    """Perform the binning process on selected columns with enhanced feedback and error handling."""
     st.markdown("### 🔄 Binning Process")
     try:
         with st.spinner('Binning data...'):
             binner = DataBinner(original_data, method=binning_method.lower())
             binned_df, binned_columns = binner.bin_columns(bin_dict)
+            
+            st.success("✅ Binning completed successfully!")
+
+            # Display binned columns categorization
+            st.markdown("### 🗂️ Binned Columns Categorization")
+            for dtype, cols in binned_columns.items():
+                if cols:
+                    st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
+            
             return original_data, binned_df
 
     except Exception as e:
         st.error(f"Error during binning: {e}")
         st.error(traceback.format_exc())
         st.stop()
-
-    st.success("✅ Binning completed successfully!")
-
-    # Display binned columns categorization
-    st.markdown("### 🗂️ Binned Columns Categorization")
-    for dtype, cols in binned_columns.items():
-        if cols:
-            st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
-
-    return OG_Data_BinTab, Data_BinTab
 
 def perform_association_rule_mining(original_df, binned_df, selected_columns):
     """Perform association rule mining on the selected columns of the original and binned DataFrames."""

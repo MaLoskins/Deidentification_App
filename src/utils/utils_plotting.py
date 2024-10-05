@@ -5,39 +5,6 @@ import matplotlib.pyplot as plt
 from src.binning import DensityPlotter
 import traceback
 
-def plot_density_plots(original_df, binned_df, selected_columns_binning):
-    """
-    Generates density plots for original and binned data.
-    Returns:
-        fig_orig (matplotlib.figure.Figure): Original data density plots.
-        fig_binned (matplotlib.figure.Figure): Binned data density plots.
-    """
-    try:
-        if len(selected_columns_binning) > 1:
-            plotter_orig = DensityPlotter(
-                dataframe=original_df,
-                category_columns=selected_columns_binning,
-                figsize=(15, 4),                     
-                plot_style='ticks'
-            )
-            fig_orig = plotter_orig.plot_grid()
-
-            plotter_binned = DensityPlotter(
-                dataframe=binned_df,
-                category_columns=selected_columns_binning,
-                figsize=(15, 4),
-                plot_style='ticks'
-            )
-            fig_binned = plotter_binned.plot_grid()
-            return fig_orig, fig_binned
-        else:
-            st.info("🔄 **Please select more than one column to display density plots.**")
-            return None, None
-    except Exception as e:
-        st.error(f"Error plotting density: {e}")
-        st.error(traceback.format_exc())
-        return None, None
-
 def plot_entropy(assessor):
     """
     Generates an entropy plot.
@@ -51,3 +18,34 @@ def plot_entropy(assessor):
         st.error(f"Error plotting entropy: {e}")
         st.error(traceback.format_exc())
         return None
+
+def plot_density_plots_streamlit(original_df, binned_df, selected_columns):
+    """Generate and display density plots for original and binned data side by side."""
+    try:
+        # Initialize DensityPlotter for original data
+        orig_plotter = DensityPlotter(
+            dataframe=original_df[selected_columns].astype('category'), 
+            category_columns=selected_columns,
+            save_path=None  # Set path if saving is needed
+        )
+        fig_orig = orig_plotter.plot_grid()
+        
+        # Initialize DensityPlotter for binned data
+        binned_plotter = DensityPlotter(
+            dataframe=binned_df[selected_columns].astype('category'), 
+            category_columns=selected_columns,
+            save_path=None  # Set path if saving is needed
+        )
+        fig_binned = binned_plotter.plot_grid()
+        
+        # Create tabs for Original and Binned plots
+        tab1, tab2 = st.tabs(["Original Data", "Binned Data"])
+        
+        with tab1:
+            st.pyplot(fig_orig)
+        
+        with tab2:
+            st.pyplot(fig_binned)
+    
+    except Exception as e:
+        st.error(f"Failed to generate density plots: {e}")

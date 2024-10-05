@@ -18,9 +18,9 @@ from src.utils import (
     perform_binning,
     perform_integrity_assessment,  # Refactored to return data
     perform_association_rule_mining,
-    perform_unique_identification_analysis
+    perform_unique_identification_analysis,
+    plot_density_plots_streamlit
 )
-from src.utils.utils_plotting import plot_density_plots, plot_entropy  # Direct import from utils_plotting.py
 from src.config import (
     PLOTS_DIR,
     PROCESSED_DATA_DIR,
@@ -304,29 +304,8 @@ def binning_tab():
             
             # Perform association rule mining
             perform_association_rule_mining(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
-            
-            # Plot density distributions for binned and original data
-            fig_orig, fig_binned = plot_density_plots(
-                OG_Data_BinTab[selected_columns_binning].astype('category'), 
-                Data_BinTab[selected_columns_binning], 
-                selected_columns_binning
-            )
 
-            if fig_orig and fig_binned:
-                # Save density plots
-                original_density_plot_path = save_dataframe(fig_orig, 'png', 'original_density_plots.png', 'plots')
-                binned_density_plot_path = save_dataframe(fig_binned, 'png', 'binned_density_plots.png', 'plots')
-                
-                # Create tabs for Original and Binned plots
-                tab1, tab2 = st.tabs(["Original Data", "Binned Data"])
-                
-                # Display the original density plot in the first tab
-                with tab1:
-                    st.pyplot(fig_orig)
-                
-                # Display the binned density plot in the second tab
-                with tab2:
-                    st.pyplot(fig_binned)
+            plot_density_plots_streamlit(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
             
             # Update GLOBAL_DATA with the binned columns
             st.session_state.GLOBAL_DATA[selected_columns_binning] = Data_BinTab[selected_columns_binning]
@@ -343,6 +322,7 @@ def binning_tab():
             st.error(f"Error during binning: {e}")
     elif selected_columns_binning:
         st.info("👉 Adjust the bins using the sliders above to run binning.")
+
 
 # =====================================
 # Location Granulariser Tab Functionality
