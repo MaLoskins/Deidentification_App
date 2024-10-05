@@ -5,6 +5,7 @@ import numpy as np
 from scipy.stats import entropy
 import matplotlib.pyplot as plt
 import os
+from mlxtend.frequent_patterns import apriori, association_rules
 
 class DataIntegrityAssessor:
     def __init__(self, original_df: pd.DataFrame, binned_df: pd.DataFrame):
@@ -12,6 +13,7 @@ class DataIntegrityAssessor:
         self.binned_df = binned_df.copy()
         self.integrity_report = None
         self.overall_loss = None
+        self.association_report = None
 
         self._validate_dataframes()
 
@@ -80,20 +82,18 @@ class DataIntegrityAssessor:
         rects1 = ax.bar(x - width/2, original_entropy, width, label='Original Entropy', alpha=0.5, edgecolor='blue', color='blue')
         rects2 = ax.bar(x + width/2, binned_entropy, width, label='Binned Entropy', alpha=0.5, edgecolor='orange', color='orange')
 
-        # Add some text for labels, title and custom x-axis tick labels, etc.
         ax.set_ylabel('Entropy (bits)')
         ax.set_title('Original vs Binned Entropy per Variable')
         ax.set_xticks(x)
         ax.set_xticklabels(variables, rotation=45, ha='right')
         ax.legend()
 
-        # Attach a text label above each bar in rects, displaying its height.
         def autolabel(rects):
             for rect in rects:
                 height = rect.get_height()
                 ax.annotate(f'{height:.2f}',
                             xy=(rect.get_x() + rect.get_width() / 2, height),
-                            xytext=(0, 3),  # 3 points vertical offset
+                            xytext=(0, 3),  
                             textcoords="offset points",
                             ha='center', va='bottom')
 
@@ -108,9 +108,81 @@ class DataIntegrityAssessor:
         else:
             plt.show()
     
-        return fig  # Add this line to return the Figure object
+        return fig  # Return the Figure object
 
     def get_overall_loss(self) -> float:
         if self.overall_loss is None:
             self.assess_integrity_loss()
         return self.overall_loss
+
+    def generate_association_rules(self, min_support: float = 0.0005, min_threshold: float = 0.0005) -> pd.DataFrame:
+        original_df_onehot = pd.get_dummies(self.original_df, dtype=int)
+        binned_df_onehot = pd.get_dummies(self.binned_df, dtype=int)
+
+        original_df_onehot, binned_df_onehot = original_df_onehot.align(binned_df_onehot, fill_value=0, axis=1)
+
+        original_frequent_itemsets = apriori(original_df_onehot, min_support=min_support, use_colnames=True)
+        binned_frequent_itemsets = apriori(binned_df_onehot, min_support=min_support, use_colnames=True)
+
+        if original_frequent_itemsets.empty or binned_frequent_itemsets.empty:
+            print("No frequent itemsets generated for original or binned data.")
+            return pd.DataFrame(columns=['antecedents', 'consequents', 'support', 'confidence', 'lift']), pd.DataFrame(), pd.DataFrame()
+
+        original_rules = association_rules(original_frequent_itemsets, metric="lift", min_threshold=min_threshold)
+        binned_rules = association_rules(binned_frequent_itemsets, metric="lift", min_threshold=min_threshold)
+
+        if original_rules.empty or binned_rules.empty:
+            print("No association rules generated.")
+            return pd.DataFrame(columns=['Original Rules', 'Binned Rules']), pd.DataFrame(), pd.DataFrame()
+
+        combined_rules = {
+            'Original Rules': original_rules['antecedents'].astype(str) + " -> " + original_rules['consequents'].astype(str),
+            'Binned Rules': binned_rules['antecedents'].astype(str) + " -> " + binned_rules['consequents'].astype(str)
+        }
+
+        self.association_report = pd.DataFrame(combined_rules)
+        return self.association_report, original_rules, binned_rules
+
+    def summarize_association_rules(self, original_rules: pd.DataFrame, binned_rules: pd.DataFrame) -> pd.DataFrame:
+        """Generate a summary DataFrame comparing original and binned rules."""
+        summary_data = {
+            'Rule': [],
+            'Original Support': [],
+            'Binned Support': [],
+            'Original Confidence': [],
+            'Binned Confidence': [],
+            'Original Lift': [],
+            'Binned Lift': []
+        }
+
+        # Calculate summary metrics for each rule in the original and binned rules
+        for index, row in original_rules.iterrows():
+            rule_str = f"{row['antecedents']} -> {row['consequents']}"
+            summary_data['Rule'].append(rule_str)
+            summary_data['Original Support'].append(row['support'])
+            summary_data['Original Confidence'].append(row['confidence'])
+            summary_data['Original Lift'].append(row['lift'])
+
+            # Convert the original rule to a string for comparison
+            original_antecedents_str = str(row['antecedents'])
+            original_consequents_str = str(row['consequents'])
+
+            # Find corresponding binned rule based on the same antecedents and consequents
+            corresponding_binned_rule = binned_rules[
+                (binned_rules['antecedents'].astype(str) == original_antecedents_str) &
+                (binned_rules['consequents'].astype(str) == original_consequents_str)
+            ]
+
+            if not corresponding_binned_rule.empty:
+                summary_data['Binned Support'].append(corresponding_binned_rule['support'].values[0])
+                summary_data['Binned Confidence'].append(corresponding_binned_rule['confidence'].values[0])
+                summary_data['Binned Lift'].append(corresponding_binned_rule['lift'].values[0])
+            else:
+                summary_data['Binned Support'].append(0)
+                summary_data['Binned Confidence'].append(0)
+                summary_data['Binned Lift'].append(0)
+
+        # Create the summary DataFrame
+        summary_df = pd.DataFrame(summary_data)
+
+        return summary_df

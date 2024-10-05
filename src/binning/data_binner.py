@@ -104,7 +104,7 @@ class DataBinner:
             method (str): The binning method ('equal width' or 'quantile').
 
         Returns:
-            pd.Series: The binned column as categorical integers starting at 1.
+            pd.Series: The binned column as a categorical Series.
         """
         if method == 'equal width':
             binned = pd.cut(

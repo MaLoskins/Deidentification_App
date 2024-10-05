@@ -419,8 +419,12 @@ def prepare_map_data(data: pd.DataFrame) -> pd.DataFrame:
     if map_data.empty:
         raise ValueError("No valid location data available to display on the map.")
 
-    return map_data
+    # Ensure 'lat' and 'lon' are float
+    map_data['lat'] = pd.to_numeric(map_data['lat'], errors='coerce')
+    map_data['lon'] = pd.to_numeric(map_data['lon'], errors='coerce')
+    map_data = map_data.dropna(subset=['lat', 'lon'])
 
+    return map_data
 
 # Ensure the cache connection is closed when the program exits
 import atexit
