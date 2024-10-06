@@ -7,7 +7,6 @@ import numpy as np
 import seaborn as sns
 import streamlit as st
 import matplotlib.pyplot as plt
-from src.binning import KAnonymityBinner
 from src.utils import (
     hide_streamlit_style,
     load_data,
@@ -685,125 +684,6 @@ def unique_identification_section_ui(selected_columns_uniquetab):
 
     return min_comb_size, max_comb_size, submit_button
 
-# =====================================
-# K-Anonymity Binning Tab Functionality
-# =====================================
-
-def k_anonymity_binning_tab():
-    """Render the K-Anonymity Binning Tab in the Streamlit app."""
-    st.header("🔒 K-Anonymity Binning")
-
-    original_data = st.session_state.ORIGINAL_DATA
-
-    # Select columns to include in k-anonymity binning
-    available_columns = original_data.select_dtypes(
-        include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]', 'category']
-    ).columns.tolist()
-
-    selected_columns_k_anonymity = st.multiselect(
-        'Select columns for k-anonymity binning',
-        options=available_columns,
-        default=[],
-        key='k_anonymity_columns_form'
-    )
-    update_session_state('K_Anonymity_Selected_Columns', selected_columns_k_anonymity)
-
-    if selected_columns_k_anonymity:
-        # Input for the desired k value
-        k_value = st.number_input(
-            'Set the value of k for k-anonymity',
-            min_value=2,
-            value=5,
-            step=1,
-            key='k_value_input'
-        )
-        update_session_state('K_Value', k_value)
-
-        if st.button("Start K-Anonymity Binning"):
-            try:
-                with st.spinner('Performing k-anonymity binning...'):
-                    # Initialize KAnonymityBinner and perform binning
-                    k_anon_binner = KAnonymityBinner(
-                        original_data[selected_columns_k_anonymity],
-                        k=k_value,
-                        method=st.session_state.Binning_Method
-                    )
-                    binned_data = k_anon_binner.perform_binning()
-
-                    # Update GLOBAL_DATA with the binned columns
-                    st.session_state.GLOBAL_DATA[selected_columns_k_anonymity] = binned_data[selected_columns_k_anonymity]
-                    update_session_state('GLOBAL_DATA', st.session_state.GLOBAL_DATA)
-
-                    st.success("✅ K-Anonymity Binning completed successfully!")
-                    st.dataframe(binned_data.head())
-
-                    # Provide option to download the k-anonymity binned data
-                    st.markdown("### 💾 Download K-Anonymity Binned Data")
-                    file_type_download = st.selectbox(
-                        '📁 Download Format', 
-                        ['csv', 'pkl'], 
-                        index=0, 
-                        key='k_anon_download_file_type_download'
-                    )
-                    
-                    if file_type_download == 'csv':
-                        binned_csv = binned_data.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="📥 Download K-Anonymity Binned Data as CSV",
-                            data=binned_csv,
-                            file_name='K_binned_data.csv',
-                            mime='text/csv',
-                        )
-                    elif file_type_download == 'pkl':
-                        import io
-                        binned_buffer = io.BytesIO()
-                        binned_data.to_pickle(binned_buffer)
-                        binned_pkl = binned_buffer.getvalue()
-                        st.download_button(
-                            label="📥 Download K-Anonymity Binned Data as Pickle",
-                            data=binned_pkl,
-                            file_name='K_binned_data.pkl',
-                            mime='application/octet-stream',
-                        )
-
-                    # ================================
-                    # Data Loss Analysis Section
-                    # ================================
-                    st.markdown("### 📊 Data Loss Analysis")
-
-                    data_loss_metrics = []
-
-                    for col in selected_columns_k_anonymity:
-                        original_unique = original_data[col].nunique()
-                        binned_unique = binned_data[col].nunique()
-                        reduction = ((original_unique - binned_unique) / original_unique) * 100 if original_unique > 0 else 0
-
-                        data_loss_metrics.append({
-                            'Column': col,
-                            'Original Unique Values': original_unique,
-                            'Binned Unique Values': binned_unique,
-                            'Reduction (%)': f"{reduction:.2f}%"
-                        })
-
-                    # Create a DataFrame for metrics
-                    metrics_df = pd.DataFrame(data_loss_metrics)
-
-                    st.markdown("#### 📈 Unique Values Reduction")
-                    st.table(metrics_df)
-
-                    # Visualize distributions before and after binning
-                    st.markdown("#### 🔍 Original vs. Binned Data Distributions")
-
-                    # Call the plotting function
-                    st.markdown("#### 🔍 Original vs. Binned Data Distributions")
-                    plot_density_plots_streamlit(original_data, binned_data, selected_columns_k_anonymity)
-
-            except Exception as e:
-                st.error(f"Error during k-anonymity binning: {e}")
-                st.error(traceback.format_exc())
-    else:
-        st.info("🔄 **Please select at least one column for k-anonymity binning.**")
-
 
 # =====================================
 # Data Anonymization Tab Functionality
@@ -1090,7 +970,6 @@ def main():
         "📊 Manual Binning", 
         "📍 Location Data Geocoding Granulariser", 
         "🔍 Unique Identification Analysis",
-        "🔒 K-Anonymity Binning",
         "🔐 Data Anonymization" 
     ])
     
@@ -1114,15 +993,9 @@ def main():
         unique_identification_analysis_tab()
 
     ######################
-    # K-Anonymity Binning Tab
-    ######################
-    with tabs[3]:
-        k_anonymity_binning_tab()
-
-    ######################
     # Data Anonymization Tab
     ######################
-    with tabs[4]:
+    with tabs[3]:
         data_anonymization_tab()
 
 # =====================================
