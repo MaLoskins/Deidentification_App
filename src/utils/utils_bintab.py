@@ -9,24 +9,31 @@ import os
 
 def get_binning_configuration(Data, selected_columns_binning):
     """
-    Generates binning configuration sliders for selected columns.
+    Generates binning configuration sliders for selected columns in two columns.
     """
     bins = {}
     st.markdown("### 📏 Binning Configuration")
-    for column in selected_columns_binning:
+    
+    # Create two columns
+    col1, col2 = st.columns(2)
+    
+    for i, column in enumerate(selected_columns_binning):
         max_bins = Data[column].nunique()
         min_bins = 1 if max_bins >= 2 else 0
         default_bins = min(10, max_bins) if max_bins >= 2 else 1
-
-        bins[column] = st.slider(
-            f'📏 {column}', 
-            min_value=min_bins, 
-            max_value=max_bins, 
-            value=default_bins, 
-            key=f'bin_slider_{column}'
-        )
+        
+        # Alternate between the two columns
+        with col1 if i % 2 == 0 else col2:
+            bins[column] = st.slider(
+                f'📏 {column}', 
+                min_value=min_bins, 
+                max_value=max_bins, 
+                value=default_bins, 
+                key=f'bin_slider_{column}'
+            )
     
     return bins
+
 
 def perform_binning(original_data, binning_method, bin_dict):
     """Perform the binning process on selected columns with enhanced feedback and error handling."""
@@ -38,34 +45,71 @@ def perform_binning(original_data, binning_method, bin_dict):
             
             st.success("✅ Binning completed successfully!")
 
-            # Display binned columns categorization
-            st.markdown("### 🗂️ Binned Columns Categorization")
-            for dtype, cols in binned_columns.items():
-                if dtype.endswith('_bins') or dtype.endswith('_groups'):
-                    continue  # We'll handle bin labels and group names separately
-                if cols:
-                    st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
-            
-            # Display bin labels for numeric and datetime columns
-            st.markdown("### 📊 Bin Ranges")
-            for col in bin_dict.keys():
-                if f"{col}_bins" in binned_columns:
-                    bin_labels = binned_columns[f"{col}_bins"]
-                    st.write(f"  - **{col}** Bins: {', '.join(bin_labels)}")
-            
-            # Display combined category names for categorical columns
-            st.markdown("### 🍎 Combined Categories")
-            for col in bin_dict.keys():
-                if f"{col}_groups" in binned_columns:
-                    groups = binned_columns[f"{col}_groups"]
-                    st.write(f"  - **{col}** Groups: {', '.join(groups)}")
-            
-            return original_data, binned_df
+            return original_data, binned_df, binned_columns
+        
+    except Exception as e:
+        st.error(f"❌ An error occurred during binning: {e}")
+        return original_data, None, None
+
+
+def binning_summary(binned_df, binned_columns, bin_dict):
+    try:
+        def display_section(title, data, index_col, width=2000, no_data_msg="No data to display."):
+            """
+            Helper function to display a section with a title and a dataframe.
+            """
+            st.markdown(f"### {title}")
+            if data:
+                df = pd.DataFrame(data)
+                df.set_index(index_col, inplace=True)
+                st.dataframe(df, width=width)
+            else:
+                st.write(no_data_msg)
+
+        # Section 1: Binned Columns Categorization
+        categorization_data = [
+            {"Data Type": dtype.capitalize(), "Columns": ", ".join(cols)}
+            for dtype, cols in binned_columns.items()
+            if not (dtype.endswith('_bins') or dtype.endswith('_groups')) and cols
+        ]
+        display_section(
+            title="🗂️ Binned Columns Categorization",
+            data=categorization_data,
+            index_col="Data Type",
+            no_data_msg="No columns were binned in this category."
+        )
+
+        # Section 2: Bin Ranges
+        bin_ranges_data = [
+            {"Column": col, "Bin Labels": ", ".join(binned_columns.get(f"{col}_bins", []))}
+            for col in bin_dict.keys()
+            if f"{col}_bins" in binned_columns
+        ]
+        display_section(
+            title="📊 Bin Ranges",
+            data=bin_ranges_data,
+            index_col="Column",
+            no_data_msg="No bin ranges to display."
+        )
+
+        # Section 3: Combined Categories
+        combined_categories_data = [
+            {"Column": col, "Groups": ", ".join(binned_columns.get(f"{col}_groups", []))}
+            for col in bin_dict.keys()
+            if f"{col}_groups" in binned_columns
+        ]
+        display_section(
+            title="🍎 Combined Categories",
+            data=combined_categories_data,
+            index_col="Column",
+            no_data_msg="No combined categories to display."
+        )
 
     except Exception as e:
-        st.error(f"Error during binning: {e}")
-        st.error(traceback.format_exc())
-        st.stop()
+        st.error(f"❌ An error occurred during binning summary: {e}")
+            
+
+
 
 
 def perform_association_rule_mining(original_df, binned_df, selected_columns):
@@ -78,7 +122,6 @@ def perform_association_rule_mining(original_df, binned_df, selected_columns):
         original_df[col] = original_df[col].astype('category')
         binned_df[col] = binned_df[col].astype('category')
 
-    st.markdown("### 📊 Association Rule Mining Results")
     try:
         # Filter to keep only the selected columns
         original_df_filtered = original_df[selected_columns]
@@ -102,12 +145,7 @@ def perform_association_rule_mining(original_df, binned_df, selected_columns):
         # Summarize the association rules
         summary_df = assessor.summarize_association_rules(association_report)
         st.subheader("📋 Summary of Association Rules")
-        st.dataframe(summary_df)
-
-        # Optionally, display key metrics or visualizations
-        st.markdown("#### Key Metrics Comparison")
-        metrics = summary_df[['Original Support', 'Binned Support', 'Original Confidence', 'Binned Confidence', 'Original Lift', 'Binned Lift']]
-        st.dataframe(metrics)
+        st.dataframe(summary_df, width=2000)
 
         # Visualize Support Comparison
         st.markdown("#### Support Comparison")
@@ -125,25 +163,13 @@ def perform_association_rule_mining(original_df, binned_df, selected_columns):
         os.makedirs(REPORTS_DIR, exist_ok=True)
         save_filepath = os.path.join(REPORTS_DIR, 'association_rules_report.csv')
         association_report.to_csv(save_filepath, index=False)
-        st.success(f"Association rules report saved to {os.path.abspath(save_filepath)}")
 
         # Save the original and binned rules
         save_original_rules = os.path.join(REPORTS_DIR, 'original_rules.csv')
         save_binned_rules = os.path.join(REPORTS_DIR, 'binned_rules.csv')
         original_rules.to_csv(save_original_rules, index=False)
         binned_rules.to_csv(save_binned_rules, index=False)
-        st.success(f"Original and binned rules saved to {REPORTS_DIR} directory.")
 
-        # Optional: Display Entropy Loss
-        assessor.assess_integrity_loss()
-        integrity_report = assessor.generate_report()
-        st.subheader("🔍 Data Integrity Assessment")
-        st.dataframe(integrity_report)
-
-        # Plot Entropy
-        st.markdown("#### Entropy Comparison Plot")
-        fig = assessor.plot_entropy()
-        st.pyplot(fig)
 
     except Exception as e:
         st.error(f"Error during association rule mining: {e}")

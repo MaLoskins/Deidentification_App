@@ -79,8 +79,8 @@ class DataIntegrityAssessor:
         width = 0.35  # the width of the bars
 
         fig, ax = plt.subplots(figsize=figsize)
-        rects1 = ax.bar(x - width/2, original_entropy, width, label='Original Entropy', alpha=0.7, edgecolor='blue', color='skyblue')
-        rects2 = ax.bar(x + width/2, binned_entropy, width, label='Binned Entropy', alpha=0.7, edgecolor='orange', color='lightcoral')
+        rects1 = ax.bar(x - width/2, original_entropy, width, label='Original Entropy', alpha=0.4, color='blue', edgecolor='blue')
+        rects2 = ax.bar(x + width/2, binned_entropy, width, label='Binned Entropy', alpha=0.4, color='orange', edgecolor='orange')
 
         ax.set_ylabel('Entropy (bits)')
         ax.set_title('Original vs Binned Entropy per Variable')
@@ -115,7 +115,7 @@ class DataIntegrityAssessor:
             self.assess_integrity_loss()
         return self.overall_loss
 
-    def generate_association_rules(self, min_support: float = 0.1, min_threshold: float = 0.5) -> tuple:
+    def generate_association_rules(self, min_support: float = 0.001, min_threshold: float = 0.001) -> tuple:
         """
         Generate association rules for both original and binned DataFrames.
         
@@ -148,6 +148,8 @@ class DataIntegrityAssessor:
             print("No association rules generated for the original data.")
         if binned_rules.empty:
             print("No association rules generated for the binned data.")
+        if original_rules.empty and binned_rules.empty:
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
         # Combine original and binned rules for comparison
         # We'll create a unique identifier for each rule to facilitate merging

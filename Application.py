@@ -20,7 +20,8 @@ from src.utils import (
     perform_association_rule_mining,
     perform_unique_identification_analysis,
     plot_density_barplots,
-    plot_density_plots_streamlit
+    plot_density_plots_streamlit,
+    binning_summary
 )
 from src.config import (
     PLOTS_DIR,
@@ -44,6 +45,8 @@ from src.location_granularizer import (
     prepare_map_data
 )
 
+# Import DataAnonymizer Class
+from src.data_anonymizer import DataAnonymizer 
 # =====================================
 # Helper Functions for Session State
 # =====================================
@@ -68,6 +71,10 @@ def initialize_session_state():
         
         # Unique Identification Analysis Session States
         'Unique_ID_Results': {},
+        
+        # Anonymization Session States
+        'ANONYMIZED_DATA': pd.DataFrame(),
+        'ANONYMIZATION_REPORT': pd.DataFrame(),
         
         # Progress Indicators
         'geocoding_progress': 0,
@@ -260,54 +267,60 @@ def binning_tab():
         key='binning_columns_form'
     )
     update_session_state('Binning_Selected_Columns', selected_columns_binning)
-    
+
+
+    bins = None
     # Button to start binning
+    
     if selected_columns_binning:
         bins = get_binning_configuration(original_data, selected_columns_binning)
-        update_session_state('Binning_Configuration', bins)
     else:
         st.info("🔄 **Please select at least one column to bin.**")
     
-    bins = st.session_state.get('Binning_Configuration')
     
-    if bins and selected_columns_binning:
+    # Button to process binning
+    st.markdown("---")
+    switch_state = st.checkbox('Start Dynamic Binning', key='binning_switch')
+
+    if bins and selected_columns_binning and switch_state:
         try:
             # Perform binning operation
-            original_data, binned_df = perform_binning(
+            original_data, binned_df, binned_columns = perform_binning(
                 original_data,
                 st.session_state.Binning_Method,
                 bins
             )
+
+            binning_summary(binned_df, binned_columns, bins)
             # Align both DataFrames (original and binned) to have the same columns
             OG_Data_BinTab, Data_BinTab = align_dataframes(original_data, binned_df)
             
-            # Write shape of both data frames
-            st.write(f"Original Data Shape: {OG_Data_BinTab.shape}")
-            st.write(f"Binned Data Shape: {Data_BinTab.shape}")
-            
-            # Assess data integrity post-binning
-            report, overall_loss, entropy_fig = perform_integrity_assessment(
-                OG_Data_BinTab,
-                Data_BinTab,
-                selected_columns_binning
-            )
-            
-            if report is not None:
-                # Save the integrity report
-                integrity_report_bintab_path = save_dataframe(report, 'csv', 'Integrity_Loss_Report.csv', 'reports')
+
+            if st.button("📄 Run Integrity Report"):
+
+                # Assess data integrity post-binning
+                report, overall_loss, entropy_fig = perform_integrity_assessment(
+                    OG_Data_BinTab,
+                    Data_BinTab,
+                    selected_columns_binning
+                )
                 
-                # Display the integrity report
-                st.markdown("### 📄 Integrity Loss Report")
-                st.dataframe(report)
-                st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
-                
-                # Plot and display entropy
-                if entropy_fig:
-                    # Save entropy plot
-                    entropy_plot_path = save_dataframe(entropy_fig, 'png', 'entropy_plot.png', 'plots')
+                if report is not None:
+                    # Save the integrity report
+                    integrity_report_bintab_path = save_dataframe(report, 'csv', 'Integrity_Loss_Report.csv', 'reports')
                     
-                    # Display entropy plot
-                    st.pyplot(entropy_fig)
+                    # Display the integrity report
+                    st.markdown("### 📄 Integrity Loss Report")
+                    st.dataframe(report)
+                    st.write(f"📊 **Overall Average Integrity Loss:** {overall_loss:.2f}%")
+                    
+                    # Plot and display entropy
+                    if entropy_fig:
+                        # Save entropy plot
+                        entropy_plot_path = save_dataframe(entropy_fig, 'png', 'entropy_plot.png', 'plots')
+                        
+                        # Display entropy plot
+                        st.pyplot(entropy_fig)
             
             # **Add a button to run Association Rule Mining**
             if st.button("🔍 Run Association Rule Mining"):
@@ -332,7 +345,6 @@ def binning_tab():
 
             # Mark binning as completed
             update_session_state('is_binning_done', True)
-            st.success("✅ Binning completed successfully!")
 
             # Provide option to download the binned data
             download_binned_data(Data_BinTab, Data_BinTab[selected_columns_binning])
@@ -341,6 +353,8 @@ def binning_tab():
             st.error(f"Error during binning: {e}")
     elif selected_columns_binning:
         st.info("👉 Adjust the bins using the sliders above to run binning.")
+    else:
+        st.info("👉 Please select columns to bin.")
 
 
 
@@ -541,17 +555,31 @@ def unique_identification_analysis_tab():
     if st.session_state.Binning_Selected_Columns and st.session_state.Location_Selected_Columns:
         granular_columns = st.session_state.Location_Selected_Columns
         selected_columns_uniquetab = st.session_state.Binning_Selected_Columns + granular_columns
-        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
     elif st.session_state.Binning_Selected_Columns:
         selected_columns_uniquetab = st.session_state.Binning_Selected_Columns
-        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
     elif st.session_state.Location_Selected_Columns:
         granular_columns = st.session_state.Location_Selected_Columns
         selected_columns_uniquetab = granular_columns
-        st.write(f"🔍 **Selected Columns for Analysis:** {selected_columns_uniquetab}")
     else:
         selected_columns_uniquetab = None
         st.info("👉 **Please use the Binning and/or Location Granulariser tabs to select columns for analysis.**")
+
+    #columns_and_info = pd.DataFrame(selected_columns_uniquetab).T.rename(index=({0: 'Original Unique Count'}, {1: 'Granular Unique Count'}))
+    #create a dataframe with the selected columns and their unique values per column for the original and granular data
+
+
+
+
+    if selected_columns_uniquetab:
+        columns_and_info = pd.DataFrame(selected_columns_uniquetab, columns=['Selected Columns'])
+        for col in selected_columns_uniquetab:
+            columns_and_info.loc[columns_and_info['Selected Columns'] == col, 'Original Unique Count'] = st.session_state.ORIGINAL_DATA[col].nunique()
+            columns_and_info.loc[columns_and_info['Selected Columns'] == col, 'Granular Unique Count'] = st.session_state.GLOBAL_DATA[col].nunique()
+
+        # Transpose and set first row as header
+        columns_and_info = columns_and_info.set_index('Selected Columns').T
+        
+        st.dataframe(columns_and_info, width=1600, height=100)
 
     # Display global data if available
     if not st.session_state.GLOBAL_DATA.empty:
@@ -633,17 +661,9 @@ def unique_identification_analysis_tab():
                     existing_columns
                 )
                 
-    else:
-        st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
 
 def unique_identification_section_ui(selected_columns_uniquetab):
     """Render the UI for Unique Identification Analysis."""
-    st.markdown("### 🔍 Unique Identification Analysis")
-    with st.expander("ℹ️ **About:**"):
-        st.write("""
-            This section analyzes combinations of binned columns and granular location columns to determine 
-            how many unique observations can be identified by each combination of these features.
-        """)
 
     # Use a form to group inputs and button together
     with st.form("unique_id_form"):
@@ -786,6 +806,238 @@ def k_anonymity_binning_tab():
 
 
 # =====================================
+# Data Anonymization Tab Functionality
+# =====================================
+
+import streamlit as st
+import traceback  # Added import for traceback
+from src.data_anonymizer import DataAnonymizer  # Ensure correct import path
+
+def data_anonymization_tab():
+    """Render the Data Anonymization Tab in the Streamlit app."""
+    st.header("🔐 Data Anonymization")
+
+    # Check if ORIGINAL_DATA is available
+    if 'ORIGINAL_DATA' not in st.session_state or st.session_state.ORIGINAL_DATA.empty:
+        st.warning("⚠️ **No original data available. Please upload a dataset first.**")
+        return
+
+    original_data = st.session_state.ORIGINAL_DATA.copy()
+
+    # Display a sample of the original data
+    st.subheader("📋 Original Data Sample")
+    st.dataframe(original_data.head())
+
+    # Select Anonymization Method
+    anonymization_methods = ['k-anonymity', 'l-diversity', 't-closeness']
+    selected_method = st.selectbox("🔧 Select Anonymization Method", options=anonymization_methods)
+
+    # Select Quasi-Identifiers
+    st.subheader("🔍 Select Quasi-Identifier Columns")
+    quasi_identifiers = st.multiselect(
+        "Select columns to generalize (Quasi-Identifiers)",
+        options=original_data.columns.tolist(),
+        default=[],
+        help="Quasi-identifiers are columns that can potentially identify individuals."
+    )
+
+    # Select Sensitive Attribute (if needed)
+    sensitive_attribute = None
+    if selected_method in ['l-diversity', 't-closeness']:
+        st.subheader("🔑 Select Sensitive Attribute")
+        sensitive_attribute = st.selectbox(
+            "Select the sensitive attribute column",
+            options=[col for col in original_data.columns if col not in quasi_identifiers],
+            help="Sensitive attribute is the column that contains sensitive information."
+        )
+
+        if sensitive_attribute in quasi_identifiers:
+            st.warning("⚠️ The sensitive attribute should not be among the quasi-identifiers.")
+            # Remove it from quasi_identifiers
+            quasi_identifiers = [qi for qi in quasi_identifiers if qi != sensitive_attribute]
+
+    if not quasi_identifiers:
+        st.info("Please select at least one quasi-identifier to configure generalization parameters.")
+        return
+
+    # Determine Data Types of Selected Quasi-Identifiers
+    qi_types = {}
+    for col in quasi_identifiers:
+        if pd.api.types.is_numeric_dtype(original_data[col]):
+            qi_types[col] = 'numerical'
+        elif pd.api.types.is_datetime64_any_dtype(original_data[col]):
+            qi_types[col] = 'datetime'
+        elif pd.api.types.is_categorical_dtype(original_data[col]) or pd.api.types.is_object_dtype(original_data[col]):
+            qi_types[col] = 'categorical'
+        else:
+            qi_types[col] = 'unsupported'
+
+    # Input Parameters with Sliders and SelectBoxes
+    st.subheader("⚙️ Set Anonymization Parameters")
+
+    # k-value slider
+    k_value = st.slider(
+        "Set the value of k (for k-anonymity and as l and t values)",
+        min_value=2,
+        max_value=100,
+        value=2,
+        step=1,
+        help="k value determines the level of anonymity."
+    )
+
+    # Debug: k_value
+    st.markdown(f"**Selected k-value:** {k_value}")
+
+    # Initialize dictionaries to hold parameters for different data types
+    bin_size_dict = {}
+    cat_threshold_dict = {}
+    datetime_freq_dict = {}
+
+    # Generate parameter controls based on data types
+    for col, dtype in qi_types.items():
+        st.markdown(f"### Parameters for **{col}** ({dtype.capitalize()})")
+
+        if dtype == 'numerical':
+            bin_size = st.slider(
+                f"Bin size for numerical column **{col}**",
+                min_value=1,
+                max_value=100,
+                value=10,
+                step=1,
+                help=f"Determines the range of values in each bin for {col}."
+            )
+            bin_size_dict[col] = bin_size
+
+        elif dtype == 'categorical':
+            cat_threshold = st.slider(
+                f"Threshold for categorical column **{col}**",
+                min_value=0.01,
+                max_value=0.5,
+                value=0.05,
+                step=0.01,
+                format="%.2f",
+                help=f"Categories with frequency below this threshold will be grouped into 'Other' for {col}."
+            )
+            cat_threshold_dict[col] = cat_threshold
+
+        elif dtype == 'datetime':
+            datetime_freq = st.selectbox(
+                f"Frequency for datetime column **{col}**",
+                options=['Y', 'Q', 'M', 'W', 'D'],
+                index=0,
+                help=f"Frequency to truncate datetime values for {col}."
+            )
+            datetime_freq_dict[col] = datetime_freq
+
+        elif dtype == 'unsupported':
+            st.warning(f"⚠️ Column **{col}** has an unsupported data type for generalization and will be skipped.")
+
+    # Button to perform anonymization
+    if st.button("✅ Apply Anonymization"):
+
+        try:
+            if not quasi_identifiers:
+                st.error("❌ Please select at least one quasi-identifier column.")
+                return
+            if selected_method in ['l-diversity', 't-closeness'] and not sensitive_attribute:
+                st.error("❌ Please select a sensitive attribute for the chosen anonymization method.")
+                return
+            if sensitive_attribute and sensitive_attribute not in original_data.columns:
+                st.error("❌ Selected sensitive attribute does not exist in the data.")
+                return
+
+            # Prepare generalization parameters
+            # For numerical columns, use the maximum bin size selected among all numerical columns
+            if bin_size_dict:
+                generalize_bin_size = max(bin_size_dict.values())
+            else:
+                generalize_bin_size = 10  # default value
+
+            # For categorical columns, use the minimum threshold selected among all categorical columns
+            if cat_threshold_dict:
+                cat_threshold = min(cat_threshold_dict.values())
+            else:
+                cat_threshold = 0.05  # default value
+
+            # For datetime columns, select the most granular frequency among all datetime columns
+            if datetime_freq_dict:
+                freq_order = {'D': 0, 'W': 1, 'M': 2, 'Q': 3, 'Y': 4}
+                datetime_freq = min(datetime_freq_dict.values(), key=lambda x: freq_order.get(x, 4))
+            else:
+                datetime_freq = 'Y'  # default frequency
+
+            # Initialize DataAnonymizer with st.write as the debug callback (optional)
+            anonymizer = DataAnonymizer(
+                original_data=original_data,
+                k=k_value,
+                debug_callback=st.write  # Pass st.write for debugging
+            )
+
+            anonymizer.anonymize(
+                method=selected_method,
+                quasi_identifiers=quasi_identifiers,
+                sensitive_attribute=sensitive_attribute,
+                generalize_bin_size=generalize_bin_size,
+                cat_threshold=cat_threshold,
+                datetime_freq=datetime_freq
+            )
+
+            # Retrieve anonymized data and report
+            anonymized_data = anonymizer.get_anonymized_data()
+            report = anonymizer.get_report()
+
+            # Display anonymized data
+            st.subheader("🛡️ Anonymized Data Sample")
+            st.dataframe(anonymized_data)
+
+            #Dataframe of all unique value COUNTS for each column
+            unique_value_counts = original_data.nunique()
+            unique_value_counts = pd.DataFrame(unique_value_counts)
+            unique_value_counts.columns = ['Unique Value Count']
+            unique_value_counts['Unique Value Count (Anonymized)'] = anonymized_data.nunique()
+            unique_value_counts['Reduction (%)'] = ((unique_value_counts['Unique Value Count'] - unique_value_counts['Unique Value Count (Anonymized)']) / unique_value_counts['Unique Value Count']) * 100
+            st.subheader("📊 Unique Value Count Reduction")
+            st.dataframe(unique_value_counts)
+
+            # Display report
+            st.subheader("📄 Anonymization Report")
+            st.dataframe(report)
+
+            # Provide Download Options
+            st.subheader("💾 Download Anonymized Data and Report")
+            csv_anonymized = anonymized_data.to_csv(index=False).encode('utf-8')
+            csv_report = report.to_csv(index=False).encode('utf-8')
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    label="📥 Download Anonymized Data as CSV",
+                    data=csv_anonymized,
+                    file_name='anonymized_data.csv',
+                    mime='text/csv',
+                )
+            with col2:
+                st.download_button(
+                    label="📥 Download Anonymization Report as CSV",
+                    data=csv_report,
+                    file_name='anonymization_report.csv',
+                    mime='text/csv',
+                )
+
+            # Update Session State with Anonymized Data and Report
+            st.session_state.ANONYMIZED_DATA = anonymized_data
+            st.session_state.ANONYMIZATION_REPORT = report
+
+            st.success("✅ Data anonymization completed successfully!")
+
+        except Exception as e:
+            st.error(f"❌ An error occurred during anonymization: {e}")
+            st.error(traceback.format_exc())
+
+
+
+
+# =====================================
 # Main Function
 # =====================================
 
@@ -811,18 +1063,20 @@ def main():
         load_and_preview_data(uploaded_file, input_file_type)
         mapped_save_type, file_path = save_raw_data(st.session_state.UPLOADED_ORIGINAL_DATA, output_file_type)
 
-        """Run the data processing pipeline."""
         processed_data = run_processing(
             save_type=mapped_save_type,
             output_filename=f'processed_data.{output_file_type}',
             file_path=os.path.join(DATA_DIR, file_path)
         )
 
+        # Update ORIGINAL_DATA
         update_session_state('ORIGINAL_DATA', processed_data.copy())
 
+        # **Initialize GLOBAL_DATA as a copy of ORIGINAL_DATA**
+        update_session_state('GLOBAL_DATA', processed_data.copy())
+
         if not st.session_state.ORIGINAL_DATA.empty:
-                st.subheader('📊 Data Preview (Original Data)')
-                st.dataframe(st.session_state.ORIGINAL_DATA.head())
+            st.dataframe(st.session_state.ORIGINAL_DATA.head())
         # Reset processing flags upon new upload
         processing_flags = ['is_binning_done', 'is_geocoding_done', 'is_granular_location_done', 'is_unique_id_done']
         for flag in processing_flags:
@@ -836,7 +1090,8 @@ def main():
         "📊 Manual Binning", 
         "📍 Location Data Geocoding Granulariser", 
         "🔍 Unique Identification Analysis",
-        "🔒 K-Anonymity Binning"
+        "🔒 K-Anonymity Binning",
+        "🔐 Data Anonymization" 
     ])
     
 
@@ -863,6 +1118,12 @@ def main():
     ######################
     with tabs[3]:
         k_anonymity_binning_tab()
+
+    ######################
+    # Data Anonymization Tab
+    ######################
+    with tabs[4]:
+        data_anonymization_tab()
 
 # =====================================
 # Entry Point
