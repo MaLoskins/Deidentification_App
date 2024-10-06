@@ -19,6 +19,7 @@ from src.utils import (
     perform_integrity_assessment,  # Refactored to return data
     perform_association_rule_mining,
     perform_unique_identification_analysis,
+    plot_density_barplots,
     plot_density_plots_streamlit
 )
 from src.config import (
@@ -247,7 +248,9 @@ def binning_tab():
     original_data = st.session_state.ORIGINAL_DATA.copy()
     
     # Determine available columns by excluding those selected in Location Granulariser
-    available_columns = list(set(original_data.select_dtypes(include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]', 'category']).columns))
+    available_columns = list(set(original_data.select_dtypes(
+        include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]', 'category']
+    ).columns))
     
     # Multiselect widget for selecting columns to bin
     selected_columns_binning = st.multiselect(
@@ -264,7 +267,7 @@ def binning_tab():
         update_session_state('Binning_Configuration', bins)
     else:
         st.info("🔄 **Please select at least one column to bin.**")
-
+    
     bins = st.session_state.get('Binning_Configuration')
     
     if bins and selected_columns_binning:
@@ -277,7 +280,11 @@ def binning_tab():
             )
             # Align both DataFrames (original and binned) to have the same columns
             OG_Data_BinTab, Data_BinTab = align_dataframes(original_data, binned_df)
-
+            
+            # Write shape of both data frames
+            st.write(f"Original Data Shape: {OG_Data_BinTab.shape}")
+            st.write(f"Binned Data Shape: {Data_BinTab.shape}")
+            
             # Assess data integrity post-binning
             report, overall_loss, entropy_fig = perform_integrity_assessment(
                 OG_Data_BinTab,
@@ -302,10 +309,22 @@ def binning_tab():
                     # Display entropy plot
                     st.pyplot(entropy_fig)
             
-            # Perform association rule mining
-            perform_association_rule_mining(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
-
-            plot_density_plots_streamlit(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
+            # **Add a button to run Association Rule Mining**
+            if st.button("🔍 Run Association Rule Mining"):
+                try:
+                    # Perform association rule mining
+                    perform_association_rule_mining(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
+                    st.success("✅ Association Rule Mining completed successfully!")
+                except Exception as e:
+                    st.error(f"Error during Association Rule Mining: {e}")
+            
+            # Optionally, if you also want to control the density plots with a button:
+            if st.button("📈 Plot Density Plots"):
+                try:
+                    plot_density_plots_streamlit(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
+                    st.success("✅ Density plots generated successfully!")
+                except Exception as e:
+                    st.error(f"Error while plotting density plots: {e}")
             
             # Update GLOBAL_DATA with the binned columns
             st.session_state.GLOBAL_DATA[selected_columns_binning] = Data_BinTab[selected_columns_binning]
@@ -322,6 +341,7 @@ def binning_tab():
             st.error(f"Error during binning: {e}")
     elif selected_columns_binning:
         st.info("👉 Adjust the bins using the sliders above to run binning.")
+
 
 
 # =====================================
@@ -607,20 +627,12 @@ def unique_identification_analysis_tab():
                         st.pyplot(entropy_fig)
 
                 # Plot density distributions
-                fig_orig, fig_binned = plot_density_plots(
+                plot_density_plots_streamlit(
                     original_for_assessment,
                     data_for_assessment,
                     existing_columns
                 )
                 
-                if fig_orig and fig_binned:
-                    # Save density plots
-                    original_density_plot_path = save_dataframe(fig_orig, 'png', 'original_density_plots_unique_id.png', 'plots')
-                    binned_density_plot_path = save_dataframe(fig_binned, 'png', 'binned_density_plots_unique_id.png', 'plots')
-                    
-                    # Display density plots
-                    st.pyplot(fig_orig)
-                    st.pyplot(fig_binned)
     else:
         st.info("🔄 **Please upload and process data to perform Unique Identification Analysis.**")
 
@@ -762,36 +774,9 @@ def k_anonymity_binning_tab():
                     # Visualize distributions before and after binning
                     st.markdown("#### 🔍 Original vs. Binned Data Distributions")
 
-                    for col in selected_columns_k_anonymity:
-                        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-
-                        # Original Data Distribution
-                        ax_orig = axes[0]
-                        if pd.api.types.is_numeric_dtype(original_data[col]) or pd.api.types.is_datetime64_any_dtype(original_data[col]):
-                            sns.histplot(original_data[col].dropna(), bins=30, kde=False, ax=ax_orig, color='blue', alpha=0.5)
-                            ax_orig.set_title(f'Original Distribution of {col}')
-                        else:
-                            original_counts = original_data[col].value_counts().nlargest(20)
-                            sns.barplot(x=original_counts.values, y=original_counts.index, ax=ax_orig, palette='viridis')
-                            ax_orig.set_title(f'Original Distribution of {col}')
-                            ax_orig.set_xlabel('Count')
-                            ax_orig.set_ylabel(col)
-
-                        # Binned Data Distribution
-                        ax_binned = axes[1]
-                        if pd.api.types.is_numeric_dtype(original_data[col]) or pd.api.types.is_datetime64_any_dtype(original_data[col]):
-                            sns.histplot(binned_data[col].dropna(), bins=binned_data[col].nunique(), kde=False, ax=ax_binned, color='orange', alpha=0.5)
-                            ax_binned.set_title(f'Binned Distribution of {col}')
-                        else:
-                            binned_counts = binned_data[col].value_counts().nlargest(20)
-                            sns.barplot(x=binned_counts.values, y=binned_counts.index, ax=ax_binned, palette='magma')
-                            ax_binned.set_title(f'Binned Distribution of {col}')
-                            ax_binned.set_xlabel('Count')
-                            ax_binned.set_ylabel(col)
-
-                        plt.tight_layout()
-                        st.pyplot(fig)
-                        plt.close(fig)
+                    # Call the plotting function
+                    st.markdown("#### 🔍 Original vs. Binned Data Distributions")
+                    plot_density_plots_streamlit(original_data, binned_data, selected_columns_k_anonymity)
 
             except Exception as e:
                 st.error(f"Error during k-anonymity binning: {e}")
