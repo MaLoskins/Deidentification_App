@@ -41,8 +41,24 @@ def perform_binning(original_data, binning_method, bin_dict):
             # Display binned columns categorization
             st.markdown("### 🗂️ Binned Columns Categorization")
             for dtype, cols in binned_columns.items():
+                if dtype.endswith('_bins') or dtype.endswith('_groups'):
+                    continue  # We'll handle bin labels and group names separately
                 if cols:
                     st.write(f"  - **{dtype.capitalize()}**: {', '.join(cols)}")
+            
+            # Display bin labels for numeric and datetime columns
+            st.markdown("### 📊 Bin Ranges")
+            for col in bin_dict.keys():
+                if f"{col}_bins" in binned_columns:
+                    bin_labels = binned_columns[f"{col}_bins"]
+                    st.write(f"  - **{col}** Bins: {', '.join(bin_labels)}")
+            
+            # Display combined category names for categorical columns
+            st.markdown("### 🍎 Combined Categories")
+            for col in bin_dict.keys():
+                if f"{col}_groups" in binned_columns:
+                    groups = binned_columns[f"{col}_groups"]
+                    st.write(f"  - **{col}** Groups: {', '.join(groups)}")
             
             return original_data, binned_df
 
@@ -50,6 +66,7 @@ def perform_binning(original_data, binning_method, bin_dict):
         st.error(f"Error during binning: {e}")
         st.error(traceback.format_exc())
         st.stop()
+
 
 def perform_association_rule_mining(original_df, binned_df, selected_columns):
     """Perform association rule mining on the selected columns of the original and binned DataFrames."""
