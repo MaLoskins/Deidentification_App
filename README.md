@@ -77,25 +77,24 @@ flowchart TD
     classDef functionStyle fill:#FFA726,stroke:#333,stroke-width:1px; %% Functions - Darker orange
     classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% Classes - Purple
     classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% Scripts - Green
+    subgraph Main_Application
+      %% Main Application Module
+      main["main()"]:::functionStyle --> setup_page["setup_page()"]:::functionStyle
+      main --> initialize_session_state["initialize_session_state()"]:::functionStyle
+      main --> sidebar_inputs["sidebar_inputs()"]:::functionStyle
+      main --> load_and_preview_data["load_and_preview_data()"]:::functionStyle
+      main --> create_tabs["create_tabs()"]:::functionStyle
 
-    %% Main Application Module
-    main["main()"]:::functionStyle --> setup_page["setup_page()"]:::functionStyle
-    main --> initialize_session_state["initialize_session_state()"]:::functionStyle
-    main --> sidebar_inputs["sidebar_inputs()"]:::functionStyle
-    main --> load_and_preview_data["load_and_preview_data()"]:::functionStyle
-    main --> create_tabs["create_tabs()"]:::functionStyle
+      sidebar_inputs --> update_session_state["update_session_state()"]:::functionStyle
 
-    sidebar_inputs --> update_session_state["update_session_state()"]:::functionStyle
+      create_tabs -->|Manual Binning| manual_binning_tab["manual_binning_tab()"]:::functionStyle
+      create_tabs -->|Location Granularizer| location_granularizer_tab["location_granularizer_tab()"]:::functionStyle
+      create_tabs -->|Unique ID Analysis| unique_id_analysis_tab["unique_id_analysis_tab()"]:::functionStyle
+      create_tabs -->|Data Anonymization| data_anonymization_tab["data_anonymization_tab()"]:::functionStyle
+      create_tabs -->|Synthetic Data Generation| synthetic_data_generation_tab["synthetic_data_generation_tab()"]:::functionStyle
 
-    create_tabs -->|Manual Binning| manual_binning_tab["manual_binning_tab()"]:::functionStyle
-    create_tabs -->|Location Granularizer| location_granularizer_tab["location_granularizer_tab()"]:::functionStyle
-    create_tabs -->|Unique ID Analysis| unique_id_analysis_tab["unique_id_analysis_tab()"]:::functionStyle
-    create_tabs -->|Data Anonymization| data_anonymization_tab["data_anonymization_tab()"]:::functionStyle
-    create_tabs -->|Synthetic Data Generation| synthetic_data_generation_tab["synthetic_data_generation_tab()"]:::functionStyle
-
-    class main mainModule;
-
-
+      class main mainModule;
+  end
 ```
 
 ### Data Flows
