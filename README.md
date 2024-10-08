@@ -96,7 +96,6 @@ flowchart TD
     class main mainModule;
 
 
-
 ```
 
 ### Data Flows
@@ -104,28 +103,32 @@ flowchart TD
 flowchart TD
     %% Define styles for clarity
     classDef functionStyle fill:#FFA726,stroke:#333,stroke-width:1px; %% Functions - Darker orange
-    classDef flowStyle stroke:#B565A7,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% For Class methods
-    classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% For scripts
+    classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% Classes - Purple
+    classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% Scripts - Green
 
     %% Manual Binning Tab
     subgraph Manual_Binning
         manual_binning_tab["manual_binning_tab()"]:::functionStyle --> perform_binning["perform_binning()"]:::functionStyle
-        perform_binning --> DataBinner.bin_columns["DataBinner.bin_columns()"]:::classStyle
+        perform_binning --> DataBinner["DataBinner"]:::classStyle
+        DataBinner --> bin_columns["bin_columns()"]:::classStyle
         perform_binning --> perform_integrity_assessment["perform_integrity_assessment()"]:::functionStyle
-        perform_integrity_assessment --> DataIntegrityAssessor.assess_integrity_loss["DataIntegrityAssessor.assess_integrity_loss()"]:::classStyle
+        perform_integrity_assessment --> DataIntegrityAssessor["DataIntegrityAssessor"]:::classStyle
+        DataIntegrityAssessor --> assess_integrity_loss["assess_integrity_loss()"]:::classStyle
         perform_binning --> plot_density_plots_and_display["plot_density_plots_and_display()"]:::functionStyle
     end
 
     %% Location Granularizer Tab
     subgraph Location_Granularizer
         location_granularizer_tab["location_granularizer_tab()"]:::functionStyle --> perform_geocoding["perform_geocoding()"]:::functionStyle
-        perform_geocoding --> geocoding.perform_geocoding["geocoding.perform_geocoding()"]:::scriptStyle
+        perform_geocoding --> geocoding_py["geocoding.py"]:::scriptStyle
+        geocoding_py --> geocode_location["geocode_location()"]:::scriptStyle
         location_granularizer_tab --> generate_granular_location["generate_granular_location()"]:::functionStyle
-        generate_granular_location --> geocoding.generate_granular_location["geocoding.generate_granular_location()"]:::scriptStyle
+        generate_granular_location --> geocoding_py
+        geocoding_py --> reverse_geocode_with_cache["reverse_geocode_with_cache()"]:::scriptStyle
         location_granularizer_tab --> display_geocoded_data["display_geocoded_data()"]:::functionStyle
         display_geocoded_data --> prepare_map_data["prepare_map_data()"]:::functionStyle
     end
+
 ```
 
 ```mermaid
@@ -133,33 +136,83 @@ flowchart TD
 flowchart TD
     %% Define styles for clarity
     classDef functionStyle fill:#FFA726,stroke:#333,stroke-width:1px; %% Functions - Darker orange
-    classDef flowStyle stroke:#B565A7,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% For Class methods
-    classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% For scripts
+    classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% Classes - Purple
+    classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% Scripts - Green
 
     %% Data Anonymization Tab
     subgraph Data_Anonymization
         data_anonymization_tab["data_anonymization_tab()"]:::functionStyle --> perform_data_anonymization["perform_data_anonymization()"]:::functionStyle
-        perform_data_anonymization --> DataAnonymizer.anonymize["DataAnonymizer.anonymize()"]:::classStyle
+        perform_data_anonymization --> DataAnonymizer["DataAnonymizer"]:::classStyle
+        DataAnonymizer --> anonymize["anonymize()"]:::classStyle
         data_anonymization_tab --> display_anonymization_results["display_anonymization_results()"]:::functionStyle
     end
 
     %% Synthetic Data Generation Tab
     subgraph Synthetic_Data_Generation
         synthetic_data_generation_tab["synthetic_data_generation_tab()"]:::functionStyle --> train_synthetic_model["train_synthetic_model()"]:::functionStyle
-        train_synthetic_model --> SyntheticDataGenerator.train["SyntheticDataGenerator.train()"]:::classStyle
+        train_synthetic_model --> SyntheticDataGenerator["SyntheticDataGenerator"]:::classStyle
+        SyntheticDataGenerator --> train["train()"]:::classStyle
         synthetic_data_generation_tab --> generate_synthetic_data["generate_synthetic_data()"]:::functionStyle
-        generate_synthetic_data --> SyntheticDataGenerator.generate["SyntheticDataGenerator.generate()"]:::classStyle
+        generate_synthetic_data --> SyntheticDataGenerator
+        SyntheticDataGenerator --> generate["generate()"]:::classStyle
     end
-    
-        %% Unique Identification Analysis Tab
+
+    %% Unique Identification Analysis Tab
     subgraph Unique_Identification_Analysis
         unique_id_analysis_tab["unique_id_analysis_tab()"]:::functionStyle --> perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
-        perform_unique_identification_analysis --> UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"]:::classStyle
+        perform_unique_identification_analysis --> UniqueBinIdentifier["UniqueBinIdentifier"]:::classStyle
+        UniqueBinIdentifier --> find_unique_identifications["find_unique_identifications()"]:::classStyle
         unique_id_analysis_tab --> display_unique_identification_results["display_unique_identification_results()"]:::functionStyle
     end
+
 ```
 
+```mermaid
+flowchart TD
+    %% Define styles for clarity
+    classDef moduleStyle fill:#2196F3,stroke:#333,stroke-width:1px, font-weight:bold; %% Modules - Blue
+    classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% Classes - Purple
+    classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% Scripts - Green
+
+    %% Modules and Classes
+    subgraph data_processing/Process_Data.py
+        DataProcessor["DataProcessor"]:::classStyle
+    end
+
+    subgraph binning/data_binner.py
+        DataBinner["DataBinner"]:::classStyle
+    end
+
+    subgraph binning/data_integrity_assessor.py
+        DataIntegrityAssessor["DataIntegrityAssessor"]:::classStyle
+    end
+
+    subgraph binning/unique_bin_identifier.py
+        UniqueBinIdentifier["UniqueBinIdentifier"]:::classStyle
+    end
+
+    subgraph data_anonymizer.py
+        DataAnonymizer["DataAnonymizer"]:::classStyle
+    end
+
+    subgraph synthetic_data_generator.py
+        SyntheticDataGenerator["SyntheticDataGenerator"]:::classStyle
+    end
+
+    subgraph location_granularizer/geocoding.py
+        geocoding_py["geocoding.py"]:::scriptStyle
+    end
+
+    %% Relationships
+    DataProcessor --> DataBinner
+    DataBinner --> DataIntegrityAssessor
+    DataBinner --> UniqueBinIdentifier
+    DataProcessor --> DataAnonymizer
+    DataProcessor --> SyntheticDataGenerator
+    DataProcessor --> geocoding_py
+
+
+```
 ## Usage
 
 ### Running the Application
