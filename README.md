@@ -73,9 +73,11 @@ pip install -r requirements.txt
 ```mermaid
 flowchart TD
     %% Define styles for clarity
-    classDef mainModule fill:#FF6F61,stroke:#333,stroke-width:2px, font-weight:bold;
-    classDef functionStyle fill:#FFE5D9,stroke:#333,stroke-width:1px;
-    
+    classDef mainModule fill:#2196F3,stroke:#333,stroke-width:2px, font-weight:bold; %% Main Module - Blue
+    classDef functionStyle fill:#FFA726,stroke:#333,stroke-width:1px; %% Functions - Darker orange
+    classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% Classes - Purple
+    classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% Scripts - Green
+
     %% Main Application Module
     main["main()"]:::functionStyle --> setup_page["setup_page()"]:::functionStyle
     main --> initialize_session_state["initialize_session_state()"]:::functionStyle
@@ -93,30 +95,34 @@ flowchart TD
 
     class main mainModule;
 
+
+
 ```
 
 ### Data Flows
 ```mermaid
 flowchart TD
     %% Define styles for clarity
-    classDef functionStyle fill:#FFE0B2,stroke:#333,stroke-width:1px;
+    classDef functionStyle fill:#FFA726,stroke:#333,stroke-width:1px; %% Functions - Darker orange
     classDef flowStyle stroke:#B565A7,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% For Class methods
+    classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% For scripts
 
     %% Manual Binning Tab
     subgraph Manual_Binning
         manual_binning_tab["manual_binning_tab()"]:::functionStyle --> perform_binning["perform_binning()"]:::functionStyle
-        perform_binning --> DataBinner.bin_columns["DataBinner.bin_columns()"]:::functionStyle
+        perform_binning --> DataBinner.bin_columns["DataBinner.bin_columns()"]:::classStyle
         perform_binning --> perform_integrity_assessment["perform_integrity_assessment()"]:::functionStyle
-        perform_integrity_assessment --> DataIntegrityAssessor.assess_integrity_loss["DataIntegrityAssessor.assess_integrity_loss()"]:::functionStyle
+        perform_integrity_assessment --> DataIntegrityAssessor.assess_integrity_loss["DataIntegrityAssessor.assess_integrity_loss()"]:::classStyle
         perform_binning --> plot_density_plots_and_display["plot_density_plots_and_display()"]:::functionStyle
     end
 
     %% Location Granularizer Tab
     subgraph Location_Granularizer
         location_granularizer_tab["location_granularizer_tab()"]:::functionStyle --> perform_geocoding["perform_geocoding()"]:::functionStyle
-        perform_geocoding --> geocoding.perform_geocoding["geocoding.perform_geocoding()"]:::functionStyle
+        perform_geocoding --> geocoding.perform_geocoding["geocoding.perform_geocoding()"]:::scriptStyle
         location_granularizer_tab --> generate_granular_location["generate_granular_location()"]:::functionStyle
-        generate_granular_location --> geocoding.generate_granular_location["geocoding.generate_granular_location()"]:::functionStyle
+        generate_granular_location --> geocoding.generate_granular_location["geocoding.generate_granular_location()"]:::scriptStyle
         location_granularizer_tab --> display_geocoded_data["display_geocoded_data()"]:::functionStyle
         display_geocoded_data --> prepare_map_data["prepare_map_data()"]:::functionStyle
     end
@@ -124,23 +130,23 @@ flowchart TD
     %% Unique Identification Analysis Tab
     subgraph Unique_Identification_Analysis
         unique_id_analysis_tab["unique_id_analysis_tab()"]:::functionStyle --> perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
-        perform_unique_identification_analysis --> UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"]:::functionStyle
+        perform_unique_identification_analysis --> UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"]:::classStyle
         unique_id_analysis_tab --> display_unique_identification_results["display_unique_identification_results()"]:::functionStyle
     end
 
     %% Data Anonymization Tab
     subgraph Data_Anonymization
         data_anonymization_tab["data_anonymization_tab()"]:::functionStyle --> perform_data_anonymization["perform_data_anonymization()"]:::functionStyle
-        perform_data_anonymization --> DataAnonymizer.anonymize["DataAnonymizer.anonymize()"]:::functionStyle
+        perform_data_anonymization --> DataAnonymizer.anonymize["DataAnonymizer.anonymize()"]:::classStyle
         data_anonymization_tab --> display_anonymization_results["display_anonymization_results()"]:::functionStyle
     end
 
     %% Synthetic Data Generation Tab
     subgraph Synthetic_Data_Generation
         synthetic_data_generation_tab["synthetic_data_generation_tab()"]:::functionStyle --> train_synthetic_model["train_synthetic_model()"]:::functionStyle
-        train_synthetic_model --> SyntheticDataGenerator.train["SyntheticDataGenerator.train()"]:::functionStyle
+        train_synthetic_model --> SyntheticDataGenerator.train["SyntheticDataGenerator.train()"]:::classStyle
         synthetic_data_generation_tab --> generate_synthetic_data["generate_synthetic_data()"]:::functionStyle
-        generate_synthetic_data --> SyntheticDataGenerator.generate["SyntheticDataGenerator.generate()"]:::functionStyle
+        generate_synthetic_data --> SyntheticDataGenerator.generate["SyntheticDataGenerator.generate()"]:::classStyle
     end
 
 
