@@ -126,13 +126,16 @@ flowchart TD
         location_granularizer_tab --> display_geocoded_data["display_geocoded_data()"]:::functionStyle
         display_geocoded_data --> prepare_map_data["prepare_map_data()"]:::functionStyle
     end
+```
 
-    %% Unique Identification Analysis Tab
-    subgraph Unique_Identification_Analysis
-        unique_id_analysis_tab["unique_id_analysis_tab()"]:::functionStyle --> perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
-        perform_unique_identification_analysis --> UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"]:::classStyle
-        unique_id_analysis_tab --> display_unique_identification_results["display_unique_identification_results()"]:::functionStyle
-    end
+```mermaid
+
+flowchart TD
+    %% Define styles for clarity
+    classDef functionStyle fill:#FFA726,stroke:#333,stroke-width:1px; %% Functions - Darker orange
+    classDef flowStyle stroke:#B565A7,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef classStyle fill:#AB47BC,stroke:#222,stroke-width:1px; %% For Class methods
+    classDef scriptStyle fill:#4CAF50,stroke:#222,stroke-width:1px; %% For scripts
 
     %% Data Anonymization Tab
     subgraph Data_Anonymization
@@ -148,8 +151,13 @@ flowchart TD
         synthetic_data_generation_tab --> generate_synthetic_data["generate_synthetic_data()"]:::functionStyle
         generate_synthetic_data --> SyntheticDataGenerator.generate["SyntheticDataGenerator.generate()"]:::classStyle
     end
-
-
+    
+        %% Unique Identification Analysis Tab
+    subgraph Unique_Identification_Analysis
+        unique_id_analysis_tab["unique_id_analysis_tab()"]:::functionStyle --> perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
+        perform_unique_identification_analysis --> UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"]:::classStyle
+        unique_id_analysis_tab --> display_unique_identification_results["display_unique_identification_results()"]:::functionStyle
+    end
 ```
 
 ## Usage
