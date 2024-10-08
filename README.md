@@ -1,130 +1,73 @@
-# Detailed Overview of the De-Identification Tool Application
+# De-Identification Tool Application
 
 ## Table of Contents
 
-- [Detailed Overview of the De-Identification Tool Application](#detailed-overview-of-the-de-identification-tool-application)
+- [De-Identification Tool Application](#de-identification-tool-application)
   - [Table of Contents](#table-of-contents)
   - [Introduction](#introduction)
-  - [Codebase Structure](#codebase-structure)
-    - [Key Directories and Files:](#key-directories-and-files)
-  - [Application Pipelines](#application-pipelines)
+  - [Features](#features)
+  - [Installation](#installation)
+  - [Mermaid Graphs (INCORRECT NEEDS UPDATING):](#mermaid-graphs-incorrect-needs-updating)
     - [Main Application Module (Application.py)](#main-application-module-applicationpy)
     - [Data Flows](#data-flows)
-    - [Binning Module (src.binning)](#binning-module-srcbinning)
-    - [Data Processing Module (src.data\_processing)](#data-processing-module-srcdata_processing)
-    - [Location Granularizer Module (src.location\_granularizer)](#location-granularizer-module-srclocation_granularizer)
-    - [Utils Module (src.utils)](#utils-module-srcutils)
-    - [Data Types](#data-types)
-  - [Module Breakdown](#module-breakdown)
-    - [1. Application.py](#1-applicationpy)
-    - [2. Configuration Module (`config.py`)](#2-configuration-module-configpy)
-    - [3. Binning Module (`src.binning`)](#3-binning-module-srcbinning)
-      - [`data_binner.py`](#data_binnerpy)
-      - [`k_anonymity_binner.py`](#k_anonymity_binnerpy)
-      - [`data_integrity_assessor.py`](#data_integrity_assessorpy)
-      - [`density_plotter.py`](#density_plotterpy)
-      - [`unique_bin_identifier.py`](#unique_bin_identifierpy)
-      - [`__init__.py`](#__init__py)
-    - [4. Data Processing Module (`src.data_processing`)](#4-data-processing-module-srcdata_processing)
-      - [`Detect_Dtypes.py`](#detect_dtypespy)
-      - [`Process_Data.py`](#process_datapy)
-      - [`__init__.py`](#__init__py-1)
-    - [5. Location Granularizer Module (`src.location_granularizer`)](#5-location-granularizer-module-srclocation_granularizer)
-      - [`geocoding.py`](#geocodingpy)
-      - [`__init__.py`](#__init__py-2)
-    - [6. Utilities Module (`src.utils`)](#6-utilities-module-srcutils)
-      - [`utils.py`](#utilspy)
-      - [`__init__.py`](#__init__py-3)
-  - [Application Workflow](#application-workflow)
-    - [1. Data Upload and Initial Processing](#1-data-upload-and-initial-processing)
-    - [2. Binning Processes](#2-binning-processes)
-      - [a. Manual Binning](#a-manual-binning)
-      - [b. K-Anonymity Binning](#b-k-anonymity-binning)
-    - [3. K-Anonymity Binning](#3-k-anonymity-binning)
-    - [4. Location Data Geocoding and Granularization](#4-location-data-geocoding-and-granularization)
-    - [5. Data Integrity Assessment](#5-data-integrity-assessment)
-    - [6. Density Plotting](#6-density-plotting)
-    - [7. Unique Identification Analysis](#7-unique-identification-analysis)
-  - [Session State Management](#session-state-management)
-  - [Inter-Module Interactions](#inter-module-interactions)
-    - [Binning Module (`src.binning`):](#binning-module-srcbinning-1)
-    - [Data Processing Module (`src.data_processing`):](#data-processing-module-srcdata_processing-1)
-    - [Location Granularizer Module (`src.location_granularizer`):](#location-granularizer-module-srclocation_granularizer-1)
-    - [Utilities Module (`src.utils`):](#utilities-module-srcutils)
-    - [Configuration Module (`config.py`):](#configuration-module-configpy)
-  - [Caching Mechanisms](#caching-mechanisms)
-  - [File and Directory Management](#file-and-directory-management)
-    - [Configuration (`config.py`):](#configuration-configpy)
-  - [Conclusion](#conclusion)
+  - [Usage](#usage)
+    - [Running the Application](#running-the-application)
+    - [Application Workflow](#application-workflow)
+  - [Codebase Structure](#codebase-structure)
+    - [Directory Structure](#directory-structure)
+    - [Main Application Code](#main-application-code)
+  - [Utilities](#utilities)
+    - [Utility Modules](#utility-modules)
+      - [Binning Utilities (`utils_bintab.py`)](#binning-utilities-utils_bintabpy)
+      - [Download Utilities (`utils_download.py`)](#download-utilities-utils_downloadpy)
+      - [General Utilities (`utils_general.py`)](#general-utilities-utils_generalpy)
+      - [Integrity Tab Utilities (`utils_integritytab.py`)](#integrity-tab-utilities-utils_integritytabpy)
+      - [Loading Utilities (`utils_loading.py`)](#loading-utilities-utils_loadingpy)
+      - [Plotting Utilities (`utils_plotting.py`)](#plotting-utilities-utils_plottingpy)
+    - [Location Granularizer Utilities (`geocoding.py`)](#location-granularizer-utilities-geocodingpy)
+  - [Custom Class Modules](#custom-class-modules)
+    - [DataAnonymizer Class](#dataanonymizer-class)
+    - [SyntheticDataGenerator Class](#syntheticdatagenerator-class)
+    - [DataProcessor Class](#dataprocessor-class)
+    - [DataBinner Class](#databinner-class)
+    - [DataIntegrityAssessor Class](#dataintegrityassessor-class)
+    - [UniqueBinIdentifier Class](#uniquebinidentifier-class)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ## Introduction
 
-The De-Identification Tool Application is a comprehensive data processing platform designed to anonymize sensitive datasets while preserving their analytical utility. Leveraging techniques such as binning, k-anonymity, and geocoding, the application ensures that individual records within a dataset cannot be re-identified, thereby safeguarding privacy. Additionally, it provides mechanisms for assessing data integrity post-processing and offers visualization tools to understand the impact of de-identification methods.
+The **De-Identification Tool Application** is a comprehensive solution designed to facilitate the anonymization and de-identification of sensitive data using advanced generalization methodologies. It assists organizations and researchers in transforming datasets containing personal or privileged information into anonymized versions while preserving data utility and integrity, ensuring compliance with privacy regulations such as GDPR and HIPAA.
 
-## Codebase Structure
+Built with Streamlit, the application provides an interactive and user-friendly interface for various data anonymization tasks, including:
 
-The application's codebase is organized systematically to promote modularity, maintainability, and scalability. Below is an overview of the repository's structure:
+- **Manual Binning**: Grouping continuous or categorical variables into bins.
+- **Location Data Geocoding and Granularization**: Transforming precise location data into less specific geographic regions.
+- **Unique Identification Analysis**: Identifying combinations of quasi-identifiers that can uniquely identify individuals.
+- **Data Anonymization**: Applying anonymization techniques like k-anonymity, l-diversity, and t-closeness.
+- **Synthetic Data Generation**: Generating synthetic datasets using models like CTGAN and Gaussian Copula.
 
-```scss
-.
-├── Application.py
-├── README.md
-├── __pycache__
-│   ├── ... (compiled Python files)
-├── data
-│   ├── Data.csv
-│   ├── Data.pkl
-│   ├── geocache.db
-│   └── outputs
-│       ├── category_mappings
-│       │   ├── ... (CSV mapping files)
-│       ├── plots
-│       │   ├── ... (Plot images)
-│       ├── processed_data
-│       │   ├── ... (Processed data files)
-│       ├── reports
-│       │   ├── ... (Report CSV files)
-│       └── unique_identifications
-│           └── unique_identifications.csv
-├── logs
-│   └── app.log
-├── requirements.txt
-└── src
-    ├── __pycache__
-    │   └── ... (compiled Python files)
-    ├── binning
-    │   ├── __init__.py
-    │   ├── data_binner.py
-    │   ├── data_integrity_assessor.py
-    │   ├── density_plotter.py
-    │   ├── k_anonymity_binner.py
-    │   └── unique_bin_identifier.py
-    ├── config.py
-    ├── data_processing
-    │   ├── __init__.py
-    │   ├── Detect_Dtypes.py
-    │   └── Process_Data.py
-    ├── location_granularizer
-    │   ├── __init__.py
-    │   └── geocoding.py
-    └── utils
-        ├── __init__.py
-        └── utils.py
+## Features
+
+- **Manual Binning**: Bin numerical, datetime, and categorical data using quantile or equal-width methods.
+- **Location Data Geocoding Granularizer**: Geocode location data and generate granular location information at various levels (address, suburb, city, state, country, continent).
+- **Unique Identification Analysis**: Identify potential unique identifications in the dataset by analyzing combinations of quasi-identifiers.
+- **Data Anonymization**: Apply k-anonymity, l-diversity, or t-closeness methods to anonymize data using the `DataAnonymizer` class.
+- **Synthetic Data Generation**: Generate synthetic data using CTGAN or Gaussian Copula methods via the `SyntheticDataGenerator` class.
+- **Data Integrity Assessment**: Evaluate the integrity loss after data transformations and visualize entropy.
+- **Visualization**: Generate density plots, entropy plots, and mapping visualizations to compare original and transformed data.
+- **Session State Management**: Efficiently handle Streamlit session state to track data transformations and user interactions.
+
+## Installation
+
+Ensure you have Python 3.7 or later installed. Install the required packages using:
+
+```
+sh
+pip install -r requirements.txt
 ```
 
-### Key Directories and Files:
-
-- **`Application.py`**: The main entry point of the application, orchestrating the user interface and workflow.
-- **`src/`**: Contains all source code, further divided into submodules for specific functionalities.
-    - **`binning/`**: Handles data binning and related analyses.
-    - **`data_processing/`**: Manages data type detection and initial data processing.
-    - **`location_granularizer/`**: Deals with geocoding and location data granularization.
-    - **`utils/`**: Provides utility functions and helpers used across modules.
-- **`data/`**: Stores datasets, processed outputs, reports, plots, and caches.
-- **`logs/`**: Contains log files for monitoring and debugging.
-- **`requirements.txt`**: Lists all Python dependencies required to run the application.
-
-## Application Pipelines
+## Mermaid Graphs (INCORRECT NEEDS UPDATING):
 
 ### Main Application Module (Application.py)
 ```mermaid
@@ -137,20 +80,16 @@ flowchart TD
     main["main()"]:::functionStyle --> setup_page["setup_page()"]:::functionStyle
     main --> initialize_session_state["initialize_session_state()"]:::functionStyle
     main --> sidebar_inputs["sidebar_inputs()"]:::functionStyle
-    main --> run_data_processing["run_data_processing()"]:::functionStyle
+    main --> load_and_preview_data["load_and_preview_data()"]:::functionStyle
     main --> create_tabs["create_tabs()"]:::functionStyle
 
-    sidebar_inputs --> load_and_preview_data["load_and_preview_data()"]:::functionStyle
-    load_and_preview_data --> load_data_util["load_data()"]:::functionStyle
-    load_and_preview_data --> update_session_state1["update_session_state()"]:::functionStyle
+    sidebar_inputs --> update_session_state["update_session_state()"]:::functionStyle
 
-    run_data_processing --> run_processing_util["run_processing()"]:::functionStyle
-    run_processing_util --> process["DataProcessor.process()"]:::functionStyle
-
-    create_tabs -->|Tab 1| k_anonymity_binning_tab["k_anonymity_binning_tab()"]:::functionStyle
-    create_tabs -->|Tab 2| binning_tab["binning_tab()"]:::functionStyle
-    create_tabs -->|Tab 3| location_granulariser_tab["location_granulariser_tab()"]:::functionStyle
-    create_tabs -->|Tab 4| unique_identification_analysis_tab["unique_identification_analysis_tab()"]:::functionStyle
+    create_tabs -->|Manual Binning| manual_binning_tab["manual_binning_tab()"]:::functionStyle
+    create_tabs -->|Location Granularizer| location_granularizer_tab["location_granularizer_tab()"]:::functionStyle
+    create_tabs -->|Unique ID Analysis| unique_id_analysis_tab["unique_id_analysis_tab()"]:::functionStyle
+    create_tabs -->|Data Anonymization| data_anonymization_tab["data_anonymization_tab()"]:::functionStyle
+    create_tabs -->|Synthetic Data Generation| synthetic_data_generation_tab["synthetic_data_generation_tab()"]:::functionStyle
 
     class main mainModule;
 
@@ -162,549 +101,526 @@ flowchart TD
     %% Define styles for clarity
     classDef functionStyle fill:#FFE0B2,stroke:#333,stroke-width:1px;
     classDef flowStyle stroke:#B565A7,stroke-width:2px,stroke-dasharray: 5 5;
-    
-    %% Data Flows
-    subgraph Group_1
-        binning_tab["binning_tab()"]:::functionStyle --> perform_binning["perform_binning()"]:::functionStyle
+
+    %% Manual Binning Tab
+    subgraph Manual_Binning
+        manual_binning_tab["manual_binning_tab()"]:::functionStyle --> perform_binning["perform_binning()"]:::functionStyle
         perform_binning --> DataBinner.bin_columns["DataBinner.bin_columns()"]:::functionStyle
         perform_binning --> perform_integrity_assessment["perform_integrity_assessment()"]:::functionStyle
-        perform_integrity_assessment --> handle_integrity_assessment_util["handle_integrity_assessment()"]:::functionStyle
-        perform_binning --> plot_density_plots_and_display_util["plot_density_plots_and_display()"]:::functionStyle
-    end
-    
-    subgraph Group_2
-        k_anonymity_binning_tab["k_anonymity_binning_tab()"]:::functionStyle --> perform_k_anonymity_binning["perform_k_anonymity_binning()"]:::functionStyle
-        perform_k_anonymity_binning --> KAnonymityBinner.perform_binning["KAnonymityBinner.perform_binning()"]:::functionStyle
-        perform_k_anonymity_binning --> handle_download_k_binned_data_util["handle_download_k_binned_data()"]:::functionStyle
+        perform_integrity_assessment --> DataIntegrityAssessor.assess_integrity_loss["DataIntegrityAssessor.assess_integrity_loss()"]:::functionStyle
+        perform_binning --> plot_density_plots_and_display["plot_density_plots_and_display()"]:::functionStyle
     end
 
-    subgraph Group_3
-        location_granulariser_tab["location_granulariser_tab()"]:::functionStyle --> perform_geocoding["perform_geocoding()"]:::functionStyle
-        location_granulariser_tab --> perform_granular_location_generation["perform_granular_location_generation()"]:::functionStyle
-        perform_granular_location_generation --> generate_granular_location["generate_granular_location()"]:::functionStyle
-        location_granulariser_tab --> display_geocoded_with_granular_data["display_geocoded_with_granular_data()"]:::functionStyle
-        display_geocoded_with_granular_data --> prepare_map_data["prepare_map_data()"]:::functionStyle
+    %% Location Granularizer Tab
+    subgraph Location_Granularizer
+        location_granularizer_tab["location_granularizer_tab()"]:::functionStyle --> perform_geocoding["perform_geocoding()"]:::functionStyle
+        perform_geocoding --> geocoding.perform_geocoding["geocoding.perform_geocoding()"]:::functionStyle
+        location_granularizer_tab --> generate_granular_location["generate_granular_location()"]:::functionStyle
+        generate_granular_location --> geocoding.generate_granular_location["geocoding.generate_granular_location()"]:::functionStyle
+        location_granularizer_tab --> display_geocoded_data["display_geocoded_data()"]:::functionStyle
+        display_geocoded_data --> prepare_map_data["prepare_map_data()"]:::functionStyle
     end
 
-    subgraph Group_4
-        unique_identification_analysis_tab["unique_identification_analysis_tab()"]:::functionStyle --> perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
+    %% Unique Identification Analysis Tab
+    subgraph Unique_Identification_Analysis
+        unique_id_analysis_tab["unique_id_analysis_tab()"]:::functionStyle --> perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
         perform_unique_identification_analysis --> UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"]:::functionStyle
-        unique_identification_analysis_tab --> display_unique_identification_results_util["display_unique_identification_results()"]:::functionStyle
+        unique_id_analysis_tab --> display_unique_identification_results["display_unique_identification_results()"]:::functionStyle
     end
 
-```
-
-
-### Binning Module (src.binning)
-```mermaid
-flowchart TD
-    %% Define styles for clarity
-    classDef binningModule fill:#6B5B95,stroke:#333,stroke-width:2px, font-weight:bold;
-    classDef classStyle fill:#D1C4E9,stroke:#333,stroke-width:1px;
-    classDef functionStyle fill:#E8DAEF,stroke:#333,stroke-width:1px;
-    
-    %% Binning Module
-    DataBinner["DataBinner"]:::classStyle --> bin_columns["bin_columns()"]:::functionStyle
-    DataIntegrityAssessor["DataIntegrityAssessor"]:::classStyle --> assess_integrity_loss["assess_integrity_loss()"]:::functionStyle
-    DataIntegrityAssessor --> generate_report["generate_report()"]:::functionStyle
-    DensityPlotter["DensityPlotter"]:::classStyle --> plot_grid["plot_grid()"]:::functionStyle
-    UniqueBinIdentifier["UniqueBinIdentifier"]:::classStyle --> find_unique_identifications["find_unique_identifications()"]:::functionStyle
-    KAnonymityBinner["KAnonymityBinner"]:::classStyle --> perform_binning["perform_binning()"]:::functionStyle
-
-    class Binning_Module binningModule;
-
-
-```
-
-### Data Processing Module (src.data_processing)
-```mermaid
-flowchart TD
-    %% Define styles for clarity
-    classDef dataProcessingModule fill:#88B04B,stroke:#333,stroke-width:2px, font-weight:bold;
-    classDef classStyle fill:#C8E6C9,stroke:#333,stroke-width:1px;
-    classDef functionStyle fill:#DCEDC8,stroke:#333,stroke-width:1px;
-    
-    %% Data Processing Module
-    DataProcessor["DataProcessor"]:::classStyle --> process["process()"]:::functionStyle
-
-    class Data_Processing_Module dataProcessingModule;
-
-```
-
-### Location Granularizer Module (src.location_granularizer)
-```mermaid
-flowchart TD
-    %% Define styles for clarity
-    classDef functionStyle fill:#cff,stroke:#333,stroke-width:1px;
-    
-    %% Location Granularizer Module
-    perform_geocoding["perform_geocoding()"]:::functionStyle --> interpret_location["interpret_location()"]:::functionStyle
-    interpret_location --> reverse_geocode_with_cache["reverse_geocode_with_cache()"]:::functionStyle
-    perform_geocoding --> generate_granular_location["generate_granular_location()"]:::functionStyle
-    generate_granular_location --> prepare_map_data["prepare_map_data()"]:::functionStyle
-```
-
-### Utils Module (src.utils)
-```mermaid
-flowchart TD
-    %% Define styles for clarity
-    classDef utilsModule fill:#92A8D1,stroke:#333,stroke-width:2px, font-weight:bold;
-    classDef functionStyle fill:#BBDEFB,stroke:#333,stroke-width:1px;
-    classDef isolatedProcess fill:#E3F2FD,stroke:#333,stroke-width:1px, stroke-dasharray: 5 5;
-    
-    %% Utils Module Functions
-    subgraph Utils_Module
-        load_data_util["load_data()"]:::functionStyle -->|Uses| load_data["load_data()"]:::functionStyle
-        run_processing_util["run_processing()"]:::functionStyle -->|Uses| run_processing["run_processing()"]:::functionStyle
-        run_processing["run_processing()"]:::functionStyle --> process["DataProcessor.process()"]:::functionStyle
-        save_dataframe_util["save_dataframe()"]:::functionStyle
-        align_dataframes_util["align_dataframes()"]:::functionStyle
-        get_binning_configuration_util["get_binning_configuration()"]:::functionStyle
-        plot_entropy_and_display_util["plot_entropy_and_display()"]:::functionStyle
-        plot_density_plots_and_display_util["plot_density_plots_and_display()"]:::functionStyle
-        handle_download_binned_data_util["handle_download_binned_data()"]:::functionStyle
-        handle_download_k_binned_data_util["handle_download_k_binned_data()"]:::functionStyle
-        handle_integrity_assessment_util["handle_integrity_assessment() "]:::functionStyle
-        handle_unique_identification_analysis_util["handle_unique_identification_analysis()"]:::functionStyle
-        display_unique_identification_results_util["display_unique_identification_results()"]:::functionStyle
-
-        %% Utils Functions Connections
-        perform_integrity_assessment_util["handle_integrity_assessment()"]:::functionStyle -->|Uses| DataIntegrityAssessor.assess_integrity_loss["DataIntegrityAssessor.assess_integrity_loss()"]:::functionStyle
-        handle_integrity_assessment_util["handle_integrity_assessment()"]:::functionStyle -->|Uses| DataIntegrityAssessor.generate_report["DataIntegrityAssessor.generate_report()"]:::functionStyle
-        plot_density_plots_and_display_util["plot_density_plots_and_display()"]:::functionStyle -->|Uses| DensityPlotter.plot_grid["DensityPlotter.plot_grid()"]:::functionStyle
-        handle_download_binned_data_util["handle_download_binned_data()"]:::functionStyle -->|Uses| save_dataframe_util["save_dataframe()"]:::functionStyle
-        handle_download_k_binned_data_util["handle_download_k_binned_data()"]:::functionStyle -->|Uses| save_dataframe_util["save_dataframe()"]:::functionStyle
-        display_unique_identification_results_util["display_unique_identification_results()"]:::functionStyle -->|Uses| display_unique_identification_results["display_unique_identification_results()"]:::functionStyle
+    %% Data Anonymization Tab
+    subgraph Data_Anonymization
+        data_anonymization_tab["data_anonymization_tab()"]:::functionStyle --> perform_data_anonymization["perform_data_anonymization()"]:::functionStyle
+        perform_data_anonymization --> DataAnonymizer.anonymize["DataAnonymizer.anonymize()"]:::functionStyle
+        data_anonymization_tab --> display_anonymization_results["display_anonymization_results()"]:::functionStyle
     end
 
-    class Utils_Module utilsModule;
+    %% Synthetic Data Generation Tab
+    subgraph Synthetic_Data_Generation
+        synthetic_data_generation_tab["synthetic_data_generation_tab()"]:::functionStyle --> train_synthetic_model["train_synthetic_model()"]:::functionStyle
+        train_synthetic_model --> SyntheticDataGenerator.train["SyntheticDataGenerator.train()"]:::functionStyle
+        synthetic_data_generation_tab --> generate_synthetic_data["generate_synthetic_data()"]:::functionStyle
+        generate_synthetic_data --> SyntheticDataGenerator.generate["SyntheticDataGenerator.generate()"]:::functionStyle
+    end
+
 
 ```
 
+## Usage
 
-### Data Types
+### Running the Application
 
-```mermaid
-flowchart TD
-    %% Define styles for clarity
-    classDef functionStyle fill:#cff,stroke:#333,stroke-width:1px;
+Run the Streamlit application using:
 
-    %% Data Types
-    load_data_util["load_data()"] -.->|Returns: DataFrame| load_and_preview_data["load_and_preview_data()"]:::functionStyle
-    run_processing_util["run_processing()"] -.->|Returns: DataFrame| run_data_processing["run_data_processing()"]:::functionStyle
-    DataProcessor.process["DataProcessor.process()"] -.->|Returns: DataFrame| run_processing_util["run_processing()"]:::functionStyle
-    DataBinner.bin_columns["DataBinner.bin_columns()"] -.->|Returns: DataFrame & Dict| perform_binning["perform_binning()"]:::functionStyle
-    KAnonymityBinner.perform_binning["KAnonymityBinner.perform_binning()"] -.->|Returns: DataFrame| perform_k_anonymity_binning["perform_k_anonymity_binning()"]:::functionStyle
-    UniqueBinIdentifier.find_unique_identifications["UniqueBinIdentifier.find_unique_identifications()"] -.->|Returns: DataFrame| perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
-    generate_granular_location["generate_granular_location()"] -.->|Returns: DataFrame| perform_granular_location_generation["perform_granular_location_generation()"]:::functionStyle
-    prepare_map_data["prepare_map_data()"] -.->|Returns: DataFrame| display_geocoded_with_granular_data["display_geocoded_with_granular_data()"]:::functionStyle
-    find_unique_identifications["find_unique_identifications()"] -.->|Returns: DataFrame| perform_unique_identification_analysis["perform_unique_identification_analysis()"]:::functionStyle
+```
+sh
+streamlit run Application.py
 ```
 
+### Application Workflow
 
-## Module Breakdown
+1. **Upload Data**: Upload your dataset in CSV or Pickle format via the sidebar.
+2. **Configure Settings**: Adjust binning options and output file type in the sidebar.
+3. **Navigate Tabs**: Use the tabs to perform:
+   - Manual Binning
+   - Location Data Geocoding Granularization
+   - Unique Identification Analysis
+   - Data Anonymization
+   - Synthetic Data Generation
+4. **Download Results**: After processing, download the transformed data and reports.
 
-### 1. Application.py
+## Codebase Structure
 
-**Location**: Root directory
+The application's codebase is organized to promote modularity, maintainability, and scalability. Below is an overview of the repository's structure:
 
-**Purpose**: Serves as the main application module, setting up the Streamlit user interface, managing user interactions, and coordinating various processing tasks through different tabs.
+### Directory Structure
+
+```
+.
+├── Anonymizer_Tab_Reworked.py
+├── Application.py
+├── FileName_Contents.txt
+├── Laplacian.py
+├── README.md
+├── data
+│   ├── Data.csv
+│   ├── geocache.db
+│   └── outputs
+│       ├── category_mappings
+│       │   ├── BC scale_mapping.csv
+│       │   ├── Clinic Location_mapping.csv
+│       │   ├── Clinic Name_mapping.csv
+│       │   ├── ED source_mapping.csv
+│       │   ├── Lab at source_mapping.csv
+│       │   ├── MET yn_mapping.csv
+│       │   ├── Performing Lab_mapping.csv
+│       │   ├── RESULT_mapping.csv
+│       │   ├── Region_mapping.csv
+│       │   ├── Test_mapping.csv
+│       │   └── address_mapping.csv
+│       ├── plots
+│       │   ├── entropy_plot.png
+│       │   └── entropy_plot_unique_id.png
+│       ├── processed_data
+│       │   └── processed_data.csv
+│       ├── reports
+│       │   ├── Integrity_Loss_Report.csv
+│       │   ├── Integrity_Loss_Report_Unique_ID.csv
+│       │   ├── Type_Conversion_Report.csv
+│       │   ├── association_rules_report.csv
+│       │   ├── binned_rules.csv
+│       │   └── original_rules.csv
+│       └── unique_identifications
+│           └── unique_identifications.csv
+├── data_anonymizer_reworked.py
+├── logs
+│   └── app.log
+├── requirements.txt
+└── src
+    ├── binning
+    │   ├── __init__.py
+    │   ├── data_binner.py
+    │   ├── data_integrity_assessor.py
+    │   └── unique_bin_identifier.py
+    ├── config.py
+    ├── data_anonymizer.py
+    ├── data_processing
+    │   ├── __init__.py
+    │   └── Process_Data.py
+    ├── location_granularizer
+    │   ├── __init__.py
+    │   └── geocoding.py
+    ├── synthetic_data_generator.py
+    └── utils
+        ├── __init__.py
+        ├── utils_bintab.py
+        ├── utils_download.py
+        ├── utils_general.py
+        ├── utils_integritytab.py
+        ├── utils_loading.py
+        └── utils_plotting.py
+```
+
+### Main Application Code
+
+The main application code is in ``Application.py``. It orchestrates the Streamlit app, handling user inputs, session state, and tab navigation.
 
 **Key Components:**
 
-- **Imports**: Integrates modules from `src.binning`, `src.utils`, `src.config`, and `src.location_granularizer`.
-- **Session State Management**: Initializes and updates session state variables to maintain state across user interactions.
-- **Page Configuration**: Sets up Streamlit page settings and custom styles.
-- **Sidebar Inputs**: Renders the sidebar for file uploads, settings, binning options, and displays session state information.
-- **Data Loading and Saving**: Handles the loading of uploaded datasets and saving of raw and processed data.
-- **Tabs**: Implements four main tabs:
-    - 🔒 K-Anonymity Binning
-    - 📊 Manual Binning
-    - 📍 Location Data Geocoding Granulariser
-    - 🔍 Unique Identification Analysis
-- **Main Function**: Orchestrates the overall workflow, invoking appropriate functions based on user inputs and tab selections.
+- **Page Configuration and Sidebar**: Sets up the Streamlit page, including the title, layout, and sidebar inputs for file upload, settings, and binning options.
 
-### 2. Configuration Module (`config.py`)
+- **Session State Management**: Functions to initialize and update session state variables, ensuring data consistency across user interactions.
 
-**Location**: `src/config.py`
+  - ``initialize_session_state()``: Initializes all necessary session state variables.
+  - ``update_session_state(key, value)``: Updates a session state variable and logs the update.
 
-**Purpose**: Centralizes path configurations and directory management, ensuring consistency across the application.
+- **Tabs**: Implements the functionality for each tab:
+  - **Manual Binning**: Allows users to select columns and configure binning parameters.
+  - **Location Data Geocoding Granularizer**: Provides geocoding and granular location generation.
+  - **Unique Identification Analysis**: Analyzes potential unique identifications based on selected columns.
+  - **Data Anonymization**: Applies anonymization techniques to the data using the `DataAnonymizer` class.
+  - **Synthetic Data Generation**: Generates synthetic data and compares it with the original data using the `SyntheticDataGenerator` class.
 
-**Key Components:**
+- **Main Function (``main()``)**: Orchestrates the application flow by setting up the page, initializing session state, handling file uploads, and rendering tabs.
 
-- **Directory Paths**: Defines base directories (`BASE_DIR`, `DATA_DIR`, `LOGS_DIR`) and subdirectories for processed data, reports, plots, unique identifications, and category mappings.
-- **Directory Initialization**: Ensures that all necessary directories exist, creating them if they don't.
+## Utilities
 
-### 3. Binning Module (`src.binning`)
+### Utility Modules
 
-**Location**: `src/binning/`
+#### Binning Utilities (`utils_bintab.py`)
 
-**Purpose**: Manages data binning operations, assessing data integrity post-binning, plotting density distributions, and conducting unique identification analyses.
+Contains functions related to the binning process in the application.
 
-**Submodules and Their Roles:**
+- **`get_binning_configuration(Data, selected_columns_binning)`**: Generates binning configuration sliders for selected columns in the Binning Tab.
 
-#### `data_binner.py`
+- **`perform_binning(original_data, binning_method, bin_dict)`**: Performs the binning process on selected columns and handles exceptions.
 
-**Class `DataBinner`**: Bins specified columns based on methods like 'equal width' or 'quantile'.
+- **`binning_summary(binned_df, binned_columns, bin_dict)`**: Provides a summary of the binning results, including binned columns categorization, bin ranges, and combined categories.
 
-**Functions:**
+- **`perform_association_rule_mining(original_df, binned_df, selected_columns)`**: Performs association rule mining on the selected columns of the original and binned DataFrames, generating reports and visualizations.
 
-- `bin_columns`: Performs binning on selected columns.
-- `_bin_column`: Helper function to bin individual columns.
-- `get_binned_data`, `get_binned_columns`: Retrieve binned data and column categorizations.
+#### Download Utilities (`utils_download.py`)
 
-#### `k_anonymity_binner.py`
+Handles downloading of data from the application.
 
-**Class `KAnonymityBinner`**: Implements k-anonymity binning to ensure that each combination of binned columns appears at least k times.
+- **`download_binned_data(data_full, data, file_type_download='csv')`**: Manages the download options for binned data, allowing users to select between only binned columns or full data.
 
-**Functions:**
+- **`handle_download_binned_data(data, file_type_download='csv')`**: Facilitates the actual download of the binned data in the specified file type.
 
-- `perform_binning`: Executes the k-anonymity binning process.
-- `_get_initial_bins`, `_apply_binning`, `_check_k_anonymity`, `_adjust_bins`: Helper functions to manage bin configurations and verify k-anonymity.
+#### General Utilities (`utils_general.py`)
 
-#### `data_integrity_assessor.py`
+Contains general utility functions used across the application.
 
-**Class `DataIntegrityAssessor`**: Assesses the loss of data integrity post-binning by comparing entropy levels.
+- **`hide_streamlit_style()`**: Hides Streamlit's default menu and footer for a cleaner interface.
 
-**Functions:**
+- **`run_processing(save_type='csv', output_filename='Processed_Data.csv', file_path='Data.csv')`**: Initializes and runs the data processor, saving outputs to designated directories.
 
-- `assess_integrity_loss`: Computes entropy loss for each column.
-- `generate_report`, `save_report`, `plot_entropy`, `get_overall_loss`: Generate and manage integrity reports and visualizations.
+#### Integrity Tab Utilities (`utils_integritytab.py`)
 
-#### `density_plotter.py`
+Handles data integrity assessment processes.
 
-**Class `DensityPlotter`**: Generates density plots for selected columns to visualize data distributions before and after binning.
+- **`perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning)`**: Assesses data integrity after binning.
 
-**Functions:**
+- **`handle_integrity_assessment(original_df, binned_df)`**: Generates integrity loss reports and entropy plots.
 
-- `plot_grid`: Creates a grid of density plots.
+- **`perform_unique_identification_analysis(original_for_assessment, data_for_assessment, selected_columns_uniquetab, min_comb_size, max_comb_size)`**: Performs unique identification analysis.
 
-#### `unique_bin_identifier.py`
+#### Loading Utilities (`utils_loading.py`)
 
-**Class `UniqueBinIdentifier`**: Identifies unique observations based on combinations of binned columns.
+Manages data loading and alignment.
 
-**Functions:**
+- **`load_data(file_type, uploaded_file)`**: Loads the uploaded file into a Pandas DataFrame without any processing.
 
-- `find_unique_identifications`: Analyzes combinations to determine unique identifications.
-- `get_results`, `save_results`, `plot_results`: Manage results and visualizations.
+- **`align_dataframes(original_df, binned_df)`**: Ensures both DataFrames have the same columns.
 
-#### `__init__.py`
+- **`load_dataframe(file_path, file_type)`**: Loads a DataFrame from the specified file path and type.
 
-**Exports**: Makes classes like `DataBinner`, `KAnonymityBinner`, `DataIntegrityAssessor`, `DensityPlotter`, and `UniqueBinIdentifier` accessible when importing `src.binning`.
+#### Plotting Utilities (`utils_plotting.py`)
 
-### 4. Data Processing Module (`src.data_processing`)
+Generates various plots for data visualization.
 
-**Location**: `src/data_processing/`
+- **`plot_entropy(assessor)`**: Generates an entropy plot.
 
-**Purpose**: Handles initial data processing tasks, including data type detection and type conversions to prepare the dataset for binning.
+- **`plot_density_plots_streamlit(original_df, binned_df, selected_columns)`**: Generates density plots for original and binned data side by side.
 
-**Submodules and Their Roles:**
+- **`plot_density_barplots(dataframe, columns, figsize, save_path, plot_style)`**: Creates bar plots with density overlays for selected columns.
 
-#### `Detect_Dtypes.py`
+### Location Granularizer Utilities (`geocoding.py`)
 
-**Class `DtypeDetector`**: Detects and converts column data types based on specified thresholds and configurations.
+Provides functions for geocoding and location data processing.
 
-**Functions:**
+- **`detect_geographical_columns(df)`**: Detects columns that likely contain geographical data based on keywords.
 
-- `process_dataframe`: Processes the DataFrame to determine and convert data types.
-- `_detect_dtype`, `_convert_dtype`: Helper functions for data type operations.
-- `get_category_mapping`: Retrieves mappings for categorical variables.
+- **`extract_gpe_entities(text)`**: Extracts GPE (Geo-Political Entities) entities using spaCy NER.
 
-#### `Process_Data.py`
+- **`geocode_location(location)`**: Geocodes a single location string.
 
-**Class `DataProcessor`**: Orchestrates the data processing workflow, utilizing `DtypeDetector` to process and save data.
+- **`geocode_location_with_cache(location)`**: Geocodes a location with caching using SQLite.
 
-**Functions:**
+- **`interpret_location(text)`**: Interprets location using NER and geocoding with cache.
 
-- `process`: Executes the processing steps, including reading data, type conversion, and saving processed data.
-- `save_category_mappings`: Saves category mappings for categorical columns.
+- **`perform_geocoding(data, selected_geo_columns, session_state, progress_bar, status_text)`**: Performs geocoding on the selected columns of the DataFrame.
 
-#### `__init__.py`
+- **`reverse_geocode_with_cache(lat, lon, granularity)`**: Reverse geocodes latitude and longitude with caching.
 
-**Exports**: Makes classes like `DtypeDetector` and `DataProcessor` accessible when importing `src.data_processing`.
+- **`generate_granular_location(data, granularity, session_state, progress_bar, status_text, column)`**: Generates a granular location column based on the specified granularity.
 
-### 5. Location Granularizer Module (`src.location_granularizer`)
+- **`prepare_map_data(data)`**: Prepares data for mapping by extracting all latitude and longitude pairs.
 
-**Location**: `src/location_granularizer/`
+## Custom Class Modules
 
-**Purpose**: Processes location-based data by extracting geographical entities, performing geocoding, and generating granular location information (e.g., city, state, continent).
+### DataAnonymizer Class
 
-**Submodules and Their Roles:**
+The `DataAnonymizer` class, defined in ``src/data_anonymizer.py``, provides methods to anonymize data using k-anonymity, l-diversity, and t-closeness techniques with automated generalization.
 
-#### `geocoding.py`
+**Key Features:**
 
-**Functions:**
+- **Automated Generalization**: Iteratively generalizes quasi-identifiers to meet the desired anonymity requirements.
+- **Supports Multiple Anonymization Methods**:
+  - **k-anonymity**: Ensures that each record is indistinguishable from at least k-1 other records.
+  - **l-diversity**: Extends k-anonymity by ensuring diversity in sensitive attributes within each group.
+  - **t-closeness**: Ensures that the distribution of a sensitive attribute in any group is close to its distribution in the overall data.
+- **Customizable Parameters**: Users can specify quasi-identifiers, sensitive attributes, and parameters like k, l, and t.
 
-- `detect_geographical_columns`: Identifies columns likely containing geographical data.
-- `extract_gpe_entities`: Uses spaCy to extract geopolitical entities from text.
-- `interpret_location`, `geocode_location`, `geocode_location_with_cache`: Perform geocoding with caching mechanisms to optimize performance.
-- `perform_geocoding`: Applies geocoding to selected columns with progress tracking.
-- `reverse_geocode_with_cache`: Retrieves granular location information (e.g., city, state) from latitude and longitude.
-- `generate_granular_location`: Generates new columns with granular location data based on specified granularity levels.
-- `prepare_map_data`: Prepares geocoded data for mapping visualizations.
-- `close_cache_connection`: Ensures that the geocoding cache is properly closed upon application exit.
+**Usage Example:**
 
-#### `__init__.py`
+```
+python
+from src.data_anonymizer import DataAnonymizer
 
-**Exports**: Makes functions like `extract_gpe_entities`, `interpret_location`, `geocode_location_with_cache`, `detect_geographical_columns`, `reverse_geocode_with_cache`, `perform_geocoding`, `generate_granular_location`, and `prepare_map_data` accessible when importing `src.location_granularizer`.
+# Initialize the DataAnonymizer with the original data
+anonymizer = DataAnonymizer(original_data)
 
-### 6. Utilities Module (`src.utils`)
+# Apply k-anonymity
+anonymizer.anonymize(
+    method='k-anonymity',
+    quasi_identifiers=['age', 'gender', 'zip_code'],
+    k=5
+)
 
-**Location**: `src/utils/`
+# Retrieve the anonymized data and report
+anonymized_data = anonymizer.get_anonymized_data()
+report = anonymizer.get_report()
+```
 
-**Purpose**: Provides a suite of utility functions that support various operations across the application, such as data loading, saving, plotting, and handling downloads.
+**Core Methods:**
 
-**Submodules and Their Roles:**
+- ``anonymize()``: Main method to apply the specified anonymization technique.
+- ``apply_k_anonymity()``: Applies k-anonymity to the data.
+- ``apply_l_diversity()``: Applies l-diversity to the data.
+- ``apply_t_closeness()``: Applies t-closeness to the data.
+- ``get_anonymized_data()``: Retrieves the anonymized DataFrame.
+- ``get_report()``: Retrieves the anonymization report with metrics.
 
-#### `utils.py`
+### SyntheticDataGenerator Class
 
-**Functions:**
+The `SyntheticDataGenerator` class, defined in ``src/synthetic_data_generator.py``, allows for generating synthetic datasets using advanced generative models.
 
-- `hide_streamlit_style`: Applies custom CSS to hide Streamlit's default menu and footer for a cleaner interface.
-- `run_processing`: Initializes and executes the data processing workflow using `DataProcessor`.
-- `load_data`: Handles the uploading and loading of datasets into Pandas DataFrames.
-- `align_dataframes`: Ensures that original and binned DataFrames have consistent columns.
-- `save_dataframe`: Saves DataFrames to specified file types and directories.
-- `load_dataframe`: Loads DataFrames from specified file types and paths.
-- `get_binning_configuration`: Generates UI sliders for configuring bin counts on selected columns.
-- `plot_entropy_and_display`: Plots entropy assessments and displays them within Streamlit.
-- `plot_density_plots_and_display`: Generates and displays density plots for original and binned data.
-- `handle_download_binned_data`: Manages the download functionality for binned data.
-- `handle_download_k_binned_data`: Manages the download functionality for k-anonymity binned data.
-- `handle_integrity_assessment`: Conducts data integrity assessments and manages related outputs.
-- `handle_unique_identification_analysis`: Performs unique identification analysis and manages related outputs.
-- `display_unique_identification_results`: Displays the results of unique identification analyses and facilitates downloads.
+**Key Features:**
 
-#### `__init__.py`
+- **Supports Multiple Methods**:
+  - **CTGAN**: A GAN-based model specialized for synthesizing tabular data with complex distributions.
+  - **Gaussian Copula**: A statistical model that captures dependencies between variables.
+- **Customizable Parameters**: Users can specify model parameters like epochs and batch size.
+- **Data Type Handling**: Manages categorical and numerical columns appropriately.
 
-**Exports**: Makes all utility functions accessible when importing `src.utils`.
+**Usage Example:**
 
-## Application Workflow
+```
+python
+from src.synthetic_data_generator import SyntheticDataGenerator
 
-The application follows a structured workflow, segmented into distinct phases corresponding to its main functionalities. Here's an in-depth look at each phase:
+# Initialize the generator with the original data
+synthetic_gen = SyntheticDataGenerator(
+    dataframe=original_data,
+    selected_columns=['age', 'income', 'gender'],
+    categorical_columns=['gender'],
+    numerical_columns=['age', 'income'],
+    method='ctgan',
+    model_params={'epochs': 300}
+)
 
-### 1. Data Upload and Initial Processing
+# Train the model
+synthetic_gen.train()
 
-**Process:**
+# Generate synthetic data
+synthetic_data = synthetic_gen.generate(num_samples=1000)
+```
 
-- **File Upload**: Users upload their dataset via the sidebar, supporting CSV and Pickle (`.pkl`) formats.
-- **Data Loading**: The `load_data` function reads the uploaded file into a Pandas DataFrame.
-- **Data Preview**: A preview of the original data is displayed to the user.
-- **Data Saving**: The raw data is saved in the `data/` directory in the chosen format.
-- **Data Processing**: The `run_processing` function initializes `DataProcessor`, which uses `DtypeDetector` to detect and convert data types based on predefined thresholds and configurations. The processed data is saved in the `processed_data/` subdirectory.
+**Core Methods:**
 
-**Key Functions:**
+- ``train()``: Trains the selected generative model on the data.
+- ``generate(num_samples)``: Generates the specified number of synthetic samples.
+- ``save_model(filepath)``: Saves the trained model to a file.
+- ``load_model(filepath)``: Loads a trained model from a file.
+- ``get_model()``: Retrieves the trained model object.
+- ``get_dataframe()``: Retrieves the original DataFrame used for training.
 
-- `sidebar_inputs()`
-- `load_and_preview_data()`
-- `load_data()`
-- `run_processing()`
-- `DataProcessor.process()`
+### DataProcessor Class
 
-### 2. Binning Processes
+The `DataProcessor` class, found in ``src/data_processing/Process_Data.py``, handles data type detection, conversion, and initial preprocessing steps.
 
-The application offers two binning approaches: **Manual Binning** and **K-Anonymity Binning**.
+**Key Features:**
 
-#### a. Manual Binning
+- **Automatic Data Type Detection**: Determines the appropriate data type for each column (int, float, date, factor, bool, string).
+- **Data Conversion**: Converts columns to the detected data types.
+- **Category Mappings**: Generates mappings for categorical (factor) variables.
+- **Parallel Processing**: Supports parallel processing for faster execution.
 
-**Process:**
+**Usage Example:**
 
-- **Column Selection**: Users select numerical or datetime columns to bin, excluding those used for location granularization.
-- **Binning Configuration**: Users specify the number of bins for each selected column via sliders.
-- **Binning Execution**: The `DataBinner` class bins the data based on the chosen method (`Quantile` or `Equal Width`).
-- **Data Integrity Assessment**: Post-binning, `DataIntegrityAssessor` evaluates the loss in data integrity by comparing entropy before and after binning.
-- **Visualization**: `DensityPlotter` generates density plots to visualize data distributions.
-- **Data Saving and Downloading**: Binned data is incorporated into the global dataset and made available for download.
+```
+python
+from src.data_processing.Process_Data import DataProcessor
 
-**Key Functions:**
+# Initialize the DataProcessor
+processor = DataProcessor(
+    input_filepath='data/Data.csv',
+    output_filepath='data/processed_data.csv',
+    return_category_mappings=True,
+    mapping_directory='data/category_mappings'
+)
 
-- `binning_tab()`
-- `perform_binning()`
-- `DataBinner.bin_columns()`
-- `perform_integrity_assessment()`
-- `DataIntegrityAssessor.assess_integrity_loss()`
-- `plot_density_plots_and_display()`
-- `handle_download_binned_data()`
+# Process the data
+processed_data = processor.process()
+```
 
-#### b. K-Anonymity Binning
+**Core Methods:**
 
-**Process:**
+- ``process()``: Executes the data processing workflow.
+- ``determine_column_type()``: Determines the data type of a column.
+- ``convert_series()``: Converts a pandas Series to the specified data type.
+- ``save_category_mappings()``: Saves mappings for categorical variables.
 
-- **Column Selection**: Users select columns for k-anonymity binning.
-- **K Value Specification**: Users set the desired k value to define anonymity levels.
-- **Binning Execution**: `KAnonymityBinner` automates binning to ensure that each combination of binned columns appears at least k times.
-- **Data Integration and Download**: The k-anonymity binned data is integrated into the global dataset and made available for download.
+### DataBinner Class
 
-**Key Functions:**
+The `DataBinner` class, located in ``src/binning/data_binner.py``, is responsible for binning specified columns in a DataFrame based on provided bin counts and binning methods.
 
-- `k_anonymity_binning_tab()`
-- `perform_k_anonymity_binning()`
-- `KAnonymityBinner.perform_binning()`
-- `handle_download_k_binned_data()`
+**Key Features:**
 
-### 3. K-Anonymity Binning
+- **Supports Multiple Data Types**: Handles numerical, datetime, and categorical data.
+- **Binning Methods**: Supports 'equal width' and 'quantile' binning methods.
+- **Custom Bin Counts**: Allows specifying the number of bins for each column.
 
-**Detailed Steps:**
+**Usage Example:**
 
-- **Column Selection**: Users select one or more columns for k-anonymity binning.
-- **K Value Input**: Users input the desired level of anonymity (k), defaulting to 5.
-- **Binning Execution**:
-    - `KAnonymityBinner` reduces the number of bins iteratively until each combination of binned columns meets the k-anonymity requirement.
-    - The process ensures that no combination uniquely identifies an individual.
-- **Result Integration**: Binned columns are added to the `GLOBAL_DATA` session state.
-- **Data Download**: Users can download the k-anonymity binned dataset in their preferred format.
+```
+python
+from src.binning.data_binner import DataBinner
 
-**Key Considerations:**
+# Initialize the DataBinner
+binner = DataBinner(original_data, method='equal width')
 
-- The binning method (`Quantile` or `Equal Width`) influences how data is grouped.
-- Larger values of k may result in fewer, broader bins to meet anonymity requirements.
+# Define bin counts for columns
+bin_dict = {'age': 5, 'income': 10}
 
-### 4. Location Data Geocoding and Granularization
+# Perform binning
+binned_df, binned_columns = binner.bin_columns(bin_dict)
+```
 
-**Process:**
+**Core Methods:**
 
-- **Geographical Column Detection**: Automatically detects columns containing geographical data using keywords (e.g., 'city', 'country').
-- **Geocoding**: Converts textual location data into latitude and longitude coordinates using Nominatim via geopy.
-- **Caching**: Implements caching with SQLite to store geocoding results, reducing redundant API calls and improving performance.
-- **Granular Location Generation**: Derives more specific location information (e.g., suburb, state, continent) from coordinates.
-- **Visualization**: Prepares data for mapping visualizations and displays them upon user request.
+- ``bin_columns(bin_dict)``: Bins specified columns based on the provided bin counts.
+- ``get_binned_data()``: Retrieves the binned DataFrame.
+- ``get_binned_columns()``: Retrieves the categorization of binned columns by data type.
 
-**Key Functions:**
+### DataIntegrityAssessor Class
 
-- `location_granulariser_tab()`
-- `perform_geocoding_process()`
-- `perform_granular_location_generation()`
-- `generate_granular_location()`
-- `prepare_map_data()`
-- `map_section()`
+The `DataIntegrityAssessor` class, in ``src/binning/data_integrity_assessor.py``, assesses the integrity loss after data transformations like binning.
 
-**Key Components:**
+**Key Features:**
 
-- **Caching**: Utilizes SQLite (`geocache.db`) to store forward and reverse geocoding results.
-- **Geocoding Rate Limiting**: Adheres to Nominatim's rate limit by introducing delays between API calls.
-- **Error Handling**: Manages exceptions during geocoding to ensure robustness.
+- **Entropy Calculation**: Computes the entropy of variables before and after binning.
+- **Integrity Report**: Generates reports detailing entropy loss and percentage loss.
+- **Visualization**: Provides methods to plot entropy comparisons.
 
-### 5. Data Integrity Assessment
+**Usage Example:**
 
-**Process:**
+```
+python
+from src.binning.data_integrity_assessor import DataIntegrityAssessor
 
-- **Entropy Calculation**: Measures the entropy (information content) of original and binned data to assess information loss.
-- **Integrity Report**: Generates a report detailing entropy loss per column and overall data integrity loss.
-- **Visualization**: Plots entropy comparisons using bar charts to visualize the impact of binning.
+# Initialize the assessor
+assessor = DataIntegrityAssessor(original_df, binned_df)
 
-**Key Functions:**
+# Assess integrity loss
+assessor.assess_integrity_loss()
 
-- `perform_integrity_assessment()`
-- `DataIntegrityAssessor.assess_integrity_loss()`
-- `plot_entropy_and_display()`
+# Generate and save report
+report = assessor.generate_report()
+assessor.save_report('reports/Integrity_Loss_Report.csv')
 
-### 6. Density Plotting
+# Plot entropy
+assessor.plot_entropy(save_path='plots/entropy_plot.png')
+```
 
-**Process:**
+**Core Methods:**
 
-- **Visualization**: Generates density plots to compare data distributions before and after binning.
-- **Interactive Tabs**: Provides separate tabs for original and binned data density plots for clarity.
+- ``assess_integrity_loss()``: Computes entropy and integrity loss.
+- ``generate_report()``: Retrieves the integrity report DataFrame.
+- ``save_report(filepath)``: Saves the integrity report to a CSV file.
+- ``plot_entropy(save_path, figsize)``: Plots the entropy comparison.
 
-**Key Functions:**
+### UniqueBinIdentifier Class
 
-- `plot_density_plots_and_display()`
-- `DensityPlotter.plot_grid()`
+The `UniqueBinIdentifier` class, in ``src/binning/unique_bin_identifier.py``, identifies unique observations in the original DataFrame based on combinations of bins in the binned DataFrame.
 
-### 7. Unique Identification Analysis
+**Key Features:**
 
-**Process:**
+- **Combination Analysis**: Evaluates different combinations of bins to find unique identifications.
+- **Results Reporting**: Provides detailed results of unique identifications per combination.
+- **Visualization**: Offers methods to plot the top combinations leading to unique identifications.
 
-- **Combination Analysis**: Evaluates combinations of binned and granular location columns to identify unique records.
-- **Scalability**: Allows users to specify the range of combination sizes (`min_comb_size` to `max_comb_size`) to balance performance and comprehensiveness.
-- **Result Presentation**: Displays the number of unique identifications per combination and offers download options.
-- **Integrity Reassessment**: Re-evaluates data integrity post-analysis.
+**Usage Example:**
 
-**Key Functions:**
+```
+python
+from src.binning.unique_bin_identifier import UniqueBinIdentifier
 
-- `unique_identification_analysis_tab()`
-- `unique_identification_section_ui()`
-- `perform_unique_identification_analysis()`
-- `UniqueBinIdentifier.find_unique_identifications()`
-- `display_unique_identification_results()`
+# Initialize the identifier
+identifier = UniqueBinIdentifier(original_df, binned_df)
 
-## Session State Management
+# Find unique identifications
+results = identifier.find_unique_identifications(
+    min_comb_size=2,
+    max_comb_size=4,
+    columns=['age', 'gender', 'zip_code']
+)
 
-**Purpose**: Maintains the application's state across user interactions, ensuring consistency and enabling dynamic updates without data loss.
+# Save results
+identifier.save_results('reports/unique_identifications.csv')
 
-**Key Components:**
+# Plot results
+identifier.plot_results(top_n=10, save_path='plots/unique_identifications_plot.png')
+```
 
-- **Initialization**: The `initialize_session_state()` function sets default values for various session state variables, such as original and processed data, binning configurations, geocoded data, and flags indicating the completion of processing steps.
-- **State Updates**: The `update_session_state()` function updates session variables and logs changes for transparency.
-- **Session State Logs**: Provides a detailed log of all session state updates, accessible via the sidebar's "Session State Info" expander.
-- **Flags**: Boolean flags (`is_binning_done`, `is_geocoding_done`, etc.) indicate the completion of specific processing stages, enabling conditional rendering and processing within tabs.
+**Core Methods:**
 
-## Inter-Module Interactions
+- ``find_unique_identifications()``: Analyzes combinations to find unique identifications.
+- ``get_results()``: Retrieves the results DataFrame.
+- ``save_results(filepath)``: Saves the results to a CSV file.
+- ``plot_results(top_n, save_path)``: Plots the top combinations.
 
-The application's modular architecture promotes separation of concerns, with each module handling specific functionalities. Here's how the modules interact:
+## Contributing
 
-- **`Application.py`** acts as the orchestrator, importing and invoking functions from various modules based on user interactions.
+Contributions are welcome! Please follow these steps to contribute to the project:
 
-### Binning Module (`src.binning`):
+1. **Fork the Repository**: Click the "Fork" button at the top right of the repository page to create a copy of the repository in your GitHub account.
+2. **Clone the Forked Repository**:
 
-- `DataBinner` and `KAnonymityBinner` perform binning operations, updating the global dataset.
-- `DataIntegrityAssessor` evaluates the impact of binning on data integrity.
-- `DensityPlotter` visualizes data distributions.
-- `UniqueBinIdentifier` conducts unique identification analyses.
+```
+sh
+git clone https://github.com/your-username/de-identification-tool.git
+cd de-identification-tool
+```
 
-### Data Processing Module (`src.data_processing`):
+3. **Create a New Branch**:
 
-- `DataProcessor` uses `DtypeDetector` to preprocess the data, ensuring appropriate data types for binning and analysis.
+```
+sh
+git checkout -b feature/YourFeatureName
+```
 
-### Location Granularizer Module (`src.location_granularizer`):
+4. **Make Your Changes**: Implement your feature or bug fix.
+5. **Commit Your Changes**:
 
-- Handles geocoding and granular location generation, integrating results into the global dataset.
+```
+sh
+git add .
+git commit -m "Add your commit message here"
+```
 
-### Utilities Module (`src.utils`):
+6. **Push to the Branch**:
 
-- Provides helper functions for data loading, saving, plotting, and download handling, facilitating seamless interactions between modules.
+```
+sh
+git push origin feature/YourFeatureName
+```
 
-### Configuration Module (`config.py`):
+7. **Open a Pull Request**: Navigate to the original repository and click on "Compare & pull request" to submit your changes for review.
 
-- Supplies consistent directory paths and configurations to all modules, ensuring uniform data management.
+Please ensure that your code follows the project's coding standards and includes appropriate tests.
 
-## Caching Mechanisms
+## License
 
-**Purpose**: Enhances performance and reduces redundant API calls during geocoding processes.
-
-**Implementation:**
-
-- **SQLite Database (`geocache.db`)**: Stores forward and reverse geocoding results.
-- **Tables**:
-    - `geocache`: Caches location strings with their corresponding latitude and longitude.
-    - `reverse_geocache`: Caches granular location information (e.g., city, state) based on latitude and longitude.
-- **Cache Access**:
-    - Before performing a geocoding request, the application checks the cache.
-    - If a cached result exists, it retrieves data from the cache instead of making an API call.
-    - New geocoding results are added to the cache for future use.
-- **Connection Management**: Ensures that the SQLite connection is properly closed upon application exit using the `atexit` module.
-
-## File and Directory Management
-
-### Configuration (`config.py`):
-
-- **Base Directories**: Establishes the foundational directories for data storage, logs, and outputs.
-- **Subdirectories**: Organizes outputs into categories like processed data, reports, plots, unique identifications, and category mappings.
-- **Directory Creation**: Automatically creates necessary directories if they don't exist, preventing runtime errors.
-
-**Data Storage:**
-
-- **Raw Data**: Stored in the `data/` directory (`Data.csv` and `Data.pkl`).
-- **Processed Data**: Saved in `data/outputs/processed_data/`.
-- **Reports and Plots**: Generated reports are saved in `data/outputs/reports/`, and plots in `data/outputs/plots/`.
-- **Unique Identifications**: Results from unique identification analyses are stored in `data/outputs/unique_identifications/`.
-- **Category Mappings**: Mappings for categorical variables are saved in `data/outputs/category_mappings/`.
-
-**Logging:**
-
-- **Log Files**: Application logs are maintained in `logs/app.log`, capturing informational messages, warnings, and errors for debugging and monitoring purposes.
-
-## Conclusion
-
-The De-Identification Tool Application is a robust and modular platform designed to anonymize datasets effectively while maintaining their analytical value. Its structured codebase, comprehensive processing modules, and user-friendly interface make it a powerful tool for organizations seeking to balance data utility with privacy requirements. By leveraging advanced techniques like binning, k-anonymity, and geocoding, the application ensures that sensitive information is de-identified meticulously, fostering trust and compliance in data handling practices.
-
-For further enhancements, consider integrating additional anonymization techniques, expanding support for more data formats, or incorporating machine learning models to predict optimal binning strategies based on dataset characteristics.
+[MIT](LICENSE)

@@ -45,7 +45,11 @@ from src.location_granularizer import (
 )
 
 # Import DataAnonymizer Class
-from src.data_anonymizer import DataAnonymizer 
+from src.data_anonymizer import DataAnonymizer
+
+# Import SyntheticDataGenerator Class
+from src.synthetic_data_generator import SyntheticDataGenerator
+
 # =====================================
 # Helper Functions for Session State
 # =====================================
@@ -355,8 +359,6 @@ def binning_tab():
     else:
         st.info("👉 Please select columns to bin.")
 
-
-
 # =====================================
 # Location Granulariser Tab Functionality
 # =====================================
@@ -563,12 +565,6 @@ def unique_identification_analysis_tab():
         selected_columns_uniquetab = None
         st.info("👉 **Please use the Binning and/or Location Granulariser tabs to select columns for analysis.**")
 
-    #columns_and_info = pd.DataFrame(selected_columns_uniquetab).T.rename(index=({0: 'Original Unique Count'}, {1: 'Granular Unique Count'}))
-    #create a dataframe with the selected columns and their unique values per column for the original and granular data
-
-
-
-
     if selected_columns_uniquetab:
         columns_and_info = pd.DataFrame(selected_columns_uniquetab, columns=['Selected Columns'])
         for col in selected_columns_uniquetab:
@@ -684,14 +680,9 @@ def unique_identification_section_ui(selected_columns_uniquetab):
 
     return min_comb_size, max_comb_size, submit_button
 
-
 # =====================================
 # Data Anonymization Tab Functionality
 # =====================================
-
-import streamlit as st
-import traceback  # Added import for traceback
-from src.data_anonymizer import DataAnonymizer  # Ensure correct import path
 
 def data_anonymization_tab():
     """Render the Data Anonymization Tab in the Streamlit app."""
@@ -740,81 +731,61 @@ def data_anonymization_tab():
         st.info("Please select at least one quasi-identifier to configure generalization parameters.")
         return
 
-    # Determine Data Types of Selected Quasi-Identifiers
-    qi_types = {}
-    for col in quasi_identifiers:
-        if pd.api.types.is_numeric_dtype(original_data[col]):
-            qi_types[col] = 'numerical'
-        elif pd.api.types.is_datetime64_any_dtype(original_data[col]):
-            qi_types[col] = 'datetime'
-        elif pd.api.types.is_categorical_dtype(original_data[col]) or pd.api.types.is_object_dtype(original_data[col]):
-            qi_types[col] = 'categorical'
-        else:
-            qi_types[col] = 'unsupported'
-
     # Input Parameters with Sliders and SelectBoxes
     st.subheader("⚙️ Set Anonymization Parameters")
 
-    # k-value slider
-    k_value = st.slider(
-        "Set the value of k (for k-anonymity and as l and t values)",
-        min_value=2,
+    # Max iterations slider
+    max_iterations = st.slider(
+        "Set the maximum number of iterations",
+        min_value=1,
         max_value=100,
-        value=2,
+        value=10,
         step=1,
-        help="k value determines the level of anonymity."
+        help="Maximum number of generalization iterations during anonymization."
     )
 
-    # Debug: k_value
-    st.markdown(f"**Selected k-value:** {k_value}")
-
-    # Initialize dictionaries to hold parameters for different data types
-    bin_size_dict = {}
-    cat_threshold_dict = {}
-    datetime_freq_dict = {}
-
-    # Generate parameter controls based on data types
-    for col, dtype in qi_types.items():
-        st.markdown(f"### Parameters for **{col}** ({dtype.capitalize()})")
-
-        if dtype == 'numerical':
-            bin_size = st.slider(
-                f"Bin size for numerical column **{col}**",
-                min_value=1,
-                max_value=100,
-                value=10,
-                step=1,
-                help=f"Determines the range of values in each bin for {col}."
-            )
-            bin_size_dict[col] = bin_size
-
-        elif dtype == 'categorical':
-            cat_threshold = st.slider(
-                f"Threshold for categorical column **{col}**",
-                min_value=0.01,
-                max_value=0.5,
-                value=0.05,
-                step=0.01,
-                format="%.2f",
-                help=f"Categories with frequency below this threshold will be grouped into 'Other' for {col}."
-            )
-            cat_threshold_dict[col] = cat_threshold
-
-        elif dtype == 'datetime':
-            datetime_freq = st.selectbox(
-                f"Frequency for datetime column **{col}**",
-                options=['Y', 'Q', 'M', 'W', 'D'],
-                index=0,
-                help=f"Frequency to truncate datetime values for {col}."
-            )
-            datetime_freq_dict[col] = datetime_freq
-
-        elif dtype == 'unsupported':
-            st.warning(f"⚠️ Column **{col}** has an unsupported data type for generalization and will be skipped.")
+    if selected_method == 'k-anonymity':
+        # k-value slider
+        k_value = st.slider(
+            "Set the value of k (for k-anonymity)",
+            min_value=2,
+            max_value=100,
+            value=2,
+            step=1,
+            help="k value determines the level of anonymity."
+        )
+        st.markdown(f"**Selected k-value:** {k_value}")
+        l_value = None
+        t_value = None
+    elif selected_method == 'l-diversity':
+        # l-value slider for l-diversity
+        l_value = st.slider(
+            "Set the value of l (for l-diversity)",
+            min_value=1,
+            max_value=100,
+            value=2,
+            step=1,
+            help="l value determines the level of diversity."
+        )
+        st.markdown(f"**Selected l-value:** {l_value}")
+        k_value = None
+        t_value = None
+    elif selected_method == 't-closeness':
+        # t-value slider for t-closeness
+        t_value = st.slider(
+            "Set the value of t (for t-closeness)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.2,
+            step=0.01,
+            help="t value determines the closeness of distribution."
+        )
+        st.markdown(f"**Selected t-value:** {t_value}")
+        k_value = None
+        l_value = None
 
     # Button to perform anonymization
     if st.button("✅ Apply Anonymization"):
-
         try:
             if not quasi_identifiers:
                 st.error("❌ Please select at least one quasi-identifier column.")
@@ -826,40 +797,21 @@ def data_anonymization_tab():
                 st.error("❌ Selected sensitive attribute does not exist in the data.")
                 return
 
-            # Prepare generalization parameters
-            # For numerical columns, use the maximum bin size selected among all numerical columns
-            if bin_size_dict:
-                generalize_bin_size = max(bin_size_dict.values())
-            else:
-                generalize_bin_size = 10  # default value
-
-            # For categorical columns, use the minimum threshold selected among all categorical columns
-            if cat_threshold_dict:
-                cat_threshold = min(cat_threshold_dict.values())
-            else:
-                cat_threshold = 0.05  # default value
-
-            # For datetime columns, select the most granular frequency among all datetime columns
-            if datetime_freq_dict:
-                freq_order = {'D': 0, 'W': 1, 'M': 2, 'Q': 3, 'Y': 4}
-                datetime_freq = min(datetime_freq_dict.values(), key=lambda x: freq_order.get(x, 4))
-            else:
-                datetime_freq = 'Y'  # default frequency
-
-            # Initialize DataAnonymizer with st.write as the debug callback (optional)
+            # Initialize DataAnonymizer with debug callback (optional)
             anonymizer = DataAnonymizer(
                 original_data=original_data,
-                k=k_value,
                 debug_callback=st.write  # Pass st.write for debugging
             )
 
+            # Apply anonymization
             anonymizer.anonymize(
                 method=selected_method,
                 quasi_identifiers=quasi_identifiers,
+                k=k_value if selected_method == 'k-anonymity' else None,
+                l=l_value if selected_method == 'l-diversity' else None,
+                t=t_value if selected_method == 't-closeness' else None,
                 sensitive_attribute=sensitive_attribute,
-                generalize_bin_size=generalize_bin_size,
-                cat_threshold=cat_threshold,
-                datetime_freq=datetime_freq
+                max_iterations=max_iterations  # Pass the max_iterations from the slider
             )
 
             # Retrieve anonymized data and report
@@ -868,16 +820,7 @@ def data_anonymization_tab():
 
             # Display anonymized data
             st.subheader("🛡️ Anonymized Data Sample")
-            st.dataframe(anonymized_data)
-
-            #Dataframe of all unique value COUNTS for each column
-            unique_value_counts = original_data.nunique()
-            unique_value_counts = pd.DataFrame(unique_value_counts)
-            unique_value_counts.columns = ['Unique Value Count']
-            unique_value_counts['Unique Value Count (Anonymized)'] = anonymized_data.nunique()
-            unique_value_counts['Reduction (%)'] = ((unique_value_counts['Unique Value Count'] - unique_value_counts['Unique Value Count (Anonymized)']) / unique_value_counts['Unique Value Count']) * 100
-            st.subheader("📊 Unique Value Count Reduction")
-            st.dataframe(unique_value_counts)
+            st.dataframe(anonymized_data[quasi_identifiers])
 
             # Display report
             st.subheader("📄 Anonymization Report")
@@ -908,13 +851,202 @@ def data_anonymization_tab():
             st.session_state.ANONYMIZED_DATA = anonymized_data
             st.session_state.ANONYMIZATION_REPORT = report
 
-            st.success("✅ Data anonymization completed successfully!")
+            # Check if desired anonymity was achieved
+            achieved_anonymity = report.iloc[-1]['Actual_Value']
+            desired_anonymity = k_value or l_value or t_value
+
+            if selected_method == 't-closeness':
+                if achieved_anonymity > desired_anonymity:
+                    st.warning("⚠️ The desired t-closeness level was not achieved.")
+                else:
+                    st.success("✅ Data anonymization completed successfully!")
+            else:
+                if achieved_anonymity < desired_anonymity:
+                    st.warning("⚠️ The desired anonymity level was not achieved.")
+                else:
+                    st.success("✅ Data anonymization completed successfully!")
 
         except Exception as e:
             st.error(f"❌ An error occurred during anonymization: {e}")
             st.error(traceback.format_exc())
 
+# =====================================
+# Synthetic Data Generation Tab Functionality
+# =====================================
 
+def synthetic_data_generation_tab():
+    """Render the Synthetic Data Generation Tab in the Streamlit app."""
+    st.header("🧪 Synthetic Data Generation")
+
+    # Check if ORIGINAL_DATA is available
+    if 'ORIGINAL_DATA' not in st.session_state or st.session_state.ORIGINAL_DATA.empty:
+        st.warning("⚠️ **No original data available. Please upload a dataset first.**")
+        return
+
+    original_data = st.session_state.ORIGINAL_DATA.copy()
+
+    # Select columns to use
+    st.subheader("🔢 Select Columns for Synthetic Data Generation")
+    selected_columns = st.multiselect(
+        "Select columns to include in synthetic data generation",
+        options=original_data.columns.tolist(),
+        default=original_data.columns.tolist()
+    )
+
+    if not selected_columns:
+        st.warning("Please select at least one column to proceed.")
+        return
+
+    # Automatically detect data types
+    selected_data = original_data[selected_columns]
+    inferred_categorical_columns = selected_data.select_dtypes(include=['object', 'category']).columns.tolist()
+    inferred_numerical_columns = selected_data.select_dtypes(include=['number']).columns.tolist()
+
+    st.write("**Detected Data Types:**")
+    st.write("Categorical Columns:", inferred_categorical_columns)
+    st.write("Numerical Columns:", inferred_numerical_columns)
+
+    # Allow user to adjust data types
+    st.subheader("🛠️ Adjust Column Data Types if Necessary")
+
+    categorical_columns = st.multiselect(
+        "Select Categorical Columns",
+        options=selected_columns,
+        default=inferred_categorical_columns
+    )
+
+    numerical_columns = st.multiselect(
+        "Select Numerical Columns",
+        options=selected_columns,
+        default=inferred_numerical_columns
+    )
+
+    # Ensure that all selected columns are in either categorical or numerical columns
+    if set(selected_columns) != set(categorical_columns).union(set(numerical_columns)):
+        st.warning("Please ensure all selected columns are assigned to either categorical or numerical.")
+        return
+
+    # Select method
+    st.subheader("🔧 Select Synthetic Data Generation Method")
+    method = st.selectbox(
+        "Choose a method",
+        options=['CTGAN', 'Gaussian Copula'],
+        index=0
+    )
+
+    # Input model parameters
+    st.subheader("⚙️ Set Model Parameters")
+
+    default_epochs = 300  # Default value
+    default_batch_size = 500  # Default value
+
+    # Only for CTGAN
+    if method.lower() == 'ctgan':
+        epochs = st.number_input("Number of Epochs", min_value=1, max_value=100000, value=default_epochs, step=1)
+        batch_size = st.number_input("Batch Size", min_value=1, max_value=10000, value=default_batch_size, step=1)
+        model_params = {
+            'epochs': epochs,
+            'batch_size': batch_size,
+            'verbose': True
+        }
+    else:
+        model_params = {}  # No parameters for Gaussian Copula
+
+    # Input number of synthetic samples to generate
+    num_samples = st.number_input("Number of Synthetic Samples to Generate", min_value=1, max_value=1000000, value=1000, step=1)
+
+    # Button to start synthetic data generation
+    if st.button("🚀 Generate Synthetic Data"):
+        try:
+            with st.spinner("Training the model and generating synthetic data..."):
+                # Initialize the generator
+                synthetic_gen = SyntheticDataGenerator(
+                    dataframe=original_data,
+                    selected_columns=selected_columns,
+                    categorical_columns=categorical_columns,
+                    numerical_columns=numerical_columns,
+                    method=method.lower(),
+                    model_params=model_params
+                )
+
+                # Train the model
+                synthetic_gen.train()
+
+                # Generate synthetic data
+                synthetic_data = synthetic_gen.generate(num_samples=num_samples)
+
+            st.success("✅ Synthetic data generation completed.")
+
+            # Display synthetic data
+            st.subheader("📄 Synthetic Data Sample")
+            st.dataframe(synthetic_data.head())
+
+            # Provide download option
+            csv = synthetic_data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Synthetic Data as CSV",
+                data=csv,
+                file_name='synthetic_data.csv',
+                mime='text/csv'
+            )
+
+            # Optionally, compare distributions
+            st.subheader("📊 Compare Distributions")
+            column_to_compare = st.selectbox("Select a column to compare distributions", options=selected_columns)
+            if column_to_compare:
+                plot_distributions(original_data, synthetic_data, column_to_compare)
+
+                compare_correlations(original_data[selected_columns], synthetic_data[selected_columns], categorical_columns)
+
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+            st.error(traceback.format_exc())
+
+def plot_distributions(real_data, synthetic_data, column):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    axes[0].hist(real_data[column].dropna(), bins=30, alpha=0.7, color='blue', edgecolor='black', linewidth=1.2, density=True)
+    axes[0].set_title(f'Real {column} Density Distribution')
+    axes[0].set_xlabel(column)
+    axes[0].set_ylabel('Density')
+    axes[1].hist(synthetic_data[column].dropna(), bins=30, alpha=0.7, color='orange', edgecolor='black', linewidth=1.2, density=True)
+    axes[1].set_title(f'Synthetic {column} Density Distribution')
+    axes[1].set_xlabel(column)
+    axes[1].set_ylabel('Density')
+    plt.tight_layout()
+    st.pyplot(fig)
+
+def convert_categories_to_integers(df, categorical_columns):
+    df_copy = df.copy()
+    for col in categorical_columns:
+        if col in df_copy.columns:
+            df_copy[col] = df_copy[col].astype('category').cat.codes
+    return df_copy
+
+def compare_correlations(real_data, synthetic_data, categorical_columns):
+    # Convert categorical columns to integers
+    real_data_int = convert_categories_to_integers(real_data, categorical_columns)
+    synthetic_data_int = convert_categories_to_integers(synthetic_data, categorical_columns)
+    
+    # Calculate correlations
+    real_corr = real_data_int.corr()
+    synthetic_corr = synthetic_data_int.corr()
+    
+    # Create subplots for side-by-side heatmaps
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    
+    # Plot real data correlation heatmap with smaller font size for annotations
+    sns.heatmap(real_corr, annot=True, fmt=".2f", cmap='coolwarm', vmin=-1, vmax=1, 
+                annot_kws={"size": 5}, ax=axes[0])  # Adjust font size with annot_kws
+    axes[0].set_title('Real Data Correlation')
+    
+    # Plot synthetic data correlation heatmap with smaller font size for annotations
+    sns.heatmap(synthetic_corr, annot=True, fmt=".2f", cmap='coolwarm', vmin=-1, vmax=1, 
+                annot_kws={"size": 5}, ax=axes[1])  # Adjust font size with annot_kws
+    axes[1].set_title('Synthetic Data Correlation')
+    
+    # Adjust layout and display the plot
+    plt.tight_layout()
+    st.pyplot(fig)
 
 
 # =====================================
@@ -970,7 +1102,8 @@ def main():
         "📊 Manual Binning", 
         "📍 Location Data Geocoding Granulariser", 
         "🔍 Unique Identification Analysis",
-        "🔐 Data Anonymization" 
+        "🔐 Data Anonymization",
+        "🧪 Synthetic Data Generation"  # New Tab
     ])
     
 
@@ -997,6 +1130,12 @@ def main():
     ######################
     with tabs[3]:
         data_anonymization_tab()
+
+    ######################
+    # Synthetic Data Generation Tab
+    ######################
+    with tabs[4]:
+        synthetic_data_generation_tab()
 
 # =====================================
 # Entry Point
