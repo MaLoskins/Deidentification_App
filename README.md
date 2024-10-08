@@ -7,7 +7,7 @@
   - [Introduction](#introduction)
   - [Features](#features)
   - [Installation](#installation)
-  - [Mermaid Graphs (INCORRECT NEEDS UPDATING):](#mermaid-graphs-incorrect-needs-updating)
+  - [Mermaid Graphs:](#mermaid-graphs)
     - [Main Application Module (Application.py)](#main-application-module-applicationpy)
     - [Data Flows](#data-flows)
   - [Usage](#usage)
@@ -67,7 +67,7 @@ sh
 pip install -r requirements.txt
 ```
 
-## Mermaid Graphs (INCORRECT NEEDS UPDATING):
+## Mermaid Graphs:
 
 ### Main Application Module (Application.py)
 ```mermaid
