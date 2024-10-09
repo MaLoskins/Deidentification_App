@@ -115,7 +115,7 @@ class DataIntegrityAssessor:
             self.assess_integrity_loss()
         return self.overall_loss
 
-    def generate_association_rules(self, min_support: float = 0.001, min_threshold: float = 0.001) -> tuple:
+    def generate_association_rules(self, min_support: float = 0.05, min_threshold: float = 0.05) -> tuple:
         """
         Generate association rules for both original and binned DataFrames.
         

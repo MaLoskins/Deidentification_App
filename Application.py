@@ -18,9 +18,12 @@ from src.utils import (
     perform_integrity_assessment,  # Refactored to return data
     perform_association_rule_mining,
     perform_unique_identification_analysis,
-    plot_density_barplots,
     plot_density_plots_streamlit,
-    binning_summary
+    binning_summary,
+    compare_correlations,
+    plot_distributions,
+    compare_correlations,
+    plot_distributions
 )
 from src.config import (
     PLOTS_DIR,
@@ -117,12 +120,12 @@ def update_session_state(key: str, value):
 def setup_page():
     """Configure the Streamlit page and apply custom styles."""
     st.set_page_config(
-        page_title="🛠️ De-Identification of Privileged Data (Generalisation Methodology)",
+        page_title="🛠️ Dynamic De-Identification",
         layout="wide",
         initial_sidebar_state="expanded",
     )
     hide_streamlit_style()
-    st.title('🛠️ De-Identification of Privileged Data (Generalisation Methodology)')
+    st.title('🛠️ Dynamic De-Identification')
 
 def sidebar_inputs():
     """Render the sidebar with file upload, settings, binning options, and info."""
@@ -173,7 +176,7 @@ def sidebar_inputs():
                 })
             df_session_info = pd.DataFrame(session_info)
             st.dataframe(df_session_info)
-        
+
     return uploaded_file, output_file_type, binning_method
 
 # =====================================
@@ -366,7 +369,7 @@ def binning_tab():
 def location_granulariser_tab():
     """Render the Location Granulariser Tab in the Streamlit app."""
     st.header("📍 Location Data Geocoding Granulariser")
-    
+
     # Geocoding process
     st.header("1️⃣ Geocoding")
 
@@ -374,6 +377,10 @@ def location_granulariser_tab():
     st.dataframe(geocoded_data.head())
 
     selected_geo_columns = setup_geocoding_options_ui(geocoded_data)
+
+    if not selected_geo_columns:
+        st.info("No geographical columns available for geocoding.")
+        return  # Exit the function early
 
     preprocess_button = st.button("📂 Start Geocoding")
     if preprocess_button:
@@ -406,8 +413,8 @@ def setup_geocoding_options_ui(geocoded_data: pd.DataFrame) -> list:
 
     if not detected_geo_columns:
         st.warning("No columns detected that likely contain geographical data. Try uploading a different file or renaming location columns.")
-        st.stop()
-    
+        return []  # Return an empty list
+
     selected_geo_column = st.selectbox(
         "Select a column to geocode",
         options=detected_geo_columns,
@@ -415,6 +422,7 @@ def setup_geocoding_options_ui(geocoded_data: pd.DataFrame) -> list:
     )
 
     return [selected_geo_column]  # Return as a list for consistency
+
 
 def perform_geocoding_process(selected_geo_columns, geocoded_data):
     """Perform geocoding on the selected columns."""
@@ -870,15 +878,31 @@ def data_anonymization_tab():
             st.error(f"❌ An error occurred during anonymization: {e}")
             st.error(traceback.format_exc())
 
+
 # =====================================
 # Synthetic Data Generation Tab Functionality
 # =====================================
+
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import logging
+import traceback
+
+# Import the updated SyntheticDataGenerator class
+from src.synthetic_data_generator import SyntheticDataGenerator
+from src.utils.utils_plotting import plot_distributions, compare_correlations
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def synthetic_data_generation_tab():
     """Render the Synthetic Data Generation Tab in the Streamlit app."""
     st.header("🧪 Synthetic Data Generation")
 
-    # Check if ORIGINAL_DATA is available
+    # Check if ORIGINAL_DATA is available in the session state
     if 'ORIGINAL_DATA' not in st.session_state or st.session_state.ORIGINAL_DATA.empty:
         st.warning("⚠️ **No original data available. Please upload a dataset first.**")
         return
@@ -888,9 +912,10 @@ def synthetic_data_generation_tab():
     # Select columns to use
     st.subheader("🔢 Select Columns for Synthetic Data Generation")
     selected_columns = st.multiselect(
-        "Select columns to include in synthetic data generation",
+        "Select columns to include in synthetic data generation:",
         options=original_data.columns.tolist(),
-        default=original_data.columns.tolist()
+        default=original_data.columns.tolist(),
+        key="selected_columns"
     )
 
     if not selected_columns:
@@ -901,49 +926,94 @@ def synthetic_data_generation_tab():
     selected_data = original_data[selected_columns]
     inferred_categorical_columns = selected_data.select_dtypes(include=['object', 'category']).columns.tolist()
     inferred_numerical_columns = selected_data.select_dtypes(include=['number']).columns.tolist()
+    inferred_datetime_columns = selected_data.select_dtypes(include=['datetime', 'datetime64']).columns.tolist()
 
-    st.write("**Detected Data Types:**")
-    st.write("Categorical Columns:", inferred_categorical_columns)
-    st.write("Numerical Columns:", inferred_numerical_columns)
+    st.markdown("**Detected Data Types:**")
+    st.markdown(f"**Datetime Columns:** {', '.join(inferred_datetime_columns) if inferred_datetime_columns else 'None'}")
+    st.markdown(f"**Categorical Columns:** {', '.join(inferred_categorical_columns) if inferred_categorical_columns else 'None'}")
+    st.markdown(f"**Numerical Columns:** {', '.join(inferred_numerical_columns) if inferred_numerical_columns else 'None'}")
 
-    # Allow user to adjust data types
-    st.subheader("🛠️ Adjust Column Data Types if Necessary")
+    # Optional: Allow user to adjust data types
+    adjust_dtypes = st.checkbox("🛠️ **Adjust Column Data Types**", key="adjust_dtypes")
 
-    categorical_columns = st.multiselect(
-        "Select Categorical Columns",
-        options=selected_columns,
-        default=inferred_categorical_columns
+    if adjust_dtypes:
+        st.subheader("🛠️ Adjust Column Data Types")
+
+        # Multiselect for datetime columns
+        datetime_columns = st.multiselect(
+            "Select Datetime Columns:",
+            options=selected_columns,
+            default=inferred_datetime_columns,
+            key="datetime_columns"
+        )
+
+        # Multiselect for categorical columns
+        categorical_columns = st.multiselect(
+            "Select Categorical Columns:",
+            options=[col for col in selected_columns if col not in datetime_columns],
+            default=inferred_categorical_columns,
+            key="categorical_columns"
+        )
+
+        # Multiselect for numerical columns
+        numerical_columns = st.multiselect(
+            "Select Numerical Columns:",
+            options=[col for col in selected_columns if col not in datetime_columns],
+            default=inferred_numerical_columns,
+            key="numerical_columns"
+        )
+
+        # Ensure all selected columns are assigned to a category
+        if set(selected_columns) != set(datetime_columns).union(set(categorical_columns)).union(set(numerical_columns)):
+            st.warning("Please ensure all selected columns are assigned to a category: Datetime, Categorical, or Numerical.")
+            st.stop()
+    else:
+        datetime_columns = inferred_datetime_columns
+        categorical_columns = inferred_categorical_columns
+        numerical_columns = inferred_numerical_columns
+
+    # Handle missing values
+    st.subheader("🚑 Handle Missing Values")
+    missing_value_strategy = st.selectbox(
+        "Select missing value handling strategy:",
+        options=[
+            'Drop Rows with Missing Values',
+            'Mean Imputation',
+            'Median Imputation',
+            'Mode Imputation',
+            'Fill with Specific Value'
+        ],
+        key="missing_value_strategy"
     )
+    if missing_value_strategy == 'Fill with Specific Value':
+        missing_fill_value = st.text_input("Specify the value to fill missing values with:", value="", key="missing_fill_value")
+    else:
+        missing_fill_value = None
 
-    numerical_columns = st.multiselect(
-        "Select Numerical Columns",
-        options=selected_columns,
-        default=inferred_numerical_columns
-    )
-
-    # Ensure that all selected columns are in either categorical or numerical columns
-    if set(selected_columns) != set(categorical_columns).union(set(numerical_columns)):
-        st.warning("Please ensure all selected columns are assigned to either categorical or numerical.")
-        return
+    # Map strategy to the parameter used in the class
+    strategy_mapping = {
+        'Drop Rows with Missing Values': 'drop',
+        'Mean Imputation': 'mean_impute',
+        'Median Imputation': 'median_impute',
+        'Mode Imputation': 'mode_impute',
+        'Fill with Specific Value': 'fill'
+    }
+    selected_strategy = strategy_mapping[missing_value_strategy]
 
     # Select method
     st.subheader("🔧 Select Synthetic Data Generation Method")
     method = st.selectbox(
-        "Choose a method",
+        "Choose a method:",
         options=['CTGAN', 'Gaussian Copula'],
-        index=0
+        index=0,
+        key="method_selection"
     )
 
     # Input model parameters
     st.subheader("⚙️ Set Model Parameters")
-
-    default_epochs = 300  # Default value
-    default_batch_size = 500  # Default value
-
-    # Only for CTGAN
     if method.lower() == 'ctgan':
-        epochs = st.number_input("Number of Epochs", min_value=1, max_value=100000, value=default_epochs, step=1)
-        batch_size = st.number_input("Batch Size", min_value=1, max_value=10000, value=default_batch_size, step=1)
+        epochs = st.number_input("Number of Epochs:", min_value=1, max_value=100000, value=300, step=1, key="epochs_input")
+        batch_size = st.number_input("Batch Size:", min_value=1, max_value=10000, value=500, step=1, key="batch_size_input")
         model_params = {
             'epochs': epochs,
             'batch_size': batch_size,
@@ -953,20 +1023,30 @@ def synthetic_data_generation_tab():
         model_params = {}  # No parameters for Gaussian Copula
 
     # Input number of synthetic samples to generate
-    num_samples = st.number_input("Number of Synthetic Samples to Generate", min_value=1, max_value=1000000, value=1000, step=1)
+    num_samples = st.number_input(
+        "Number of Synthetic Samples to Generate:",
+        min_value=1,
+        max_value=200000,
+        value=1000,
+        step=1,
+        key="num_samples_input"
+    )
 
     # Button to start synthetic data generation
-    if st.button("🚀 Generate Synthetic Data"):
+    if st.button("🚀 Generate Synthetic Data", key="generate_button"):
         try:
             with st.spinner("Training the model and generating synthetic data..."):
                 # Initialize the generator
                 synthetic_gen = SyntheticDataGenerator(
                     dataframe=original_data,
                     selected_columns=selected_columns,
-                    categorical_columns=categorical_columns,
-                    numerical_columns=numerical_columns,
                     method=method.lower(),
-                    model_params=model_params
+                    model_params=model_params,
+                    missing_value_strategy=selected_strategy,
+                    missing_fill_value=missing_fill_value,
+                    categorical_columns=categorical_columns if adjust_dtypes else None,
+                    numerical_columns=numerical_columns if adjust_dtypes else None,
+                    datetime_columns=datetime_columns if adjust_dtypes else None  # Pass datetime_columns
                 )
 
                 # Train the model
@@ -975,79 +1055,67 @@ def synthetic_data_generation_tab():
                 # Generate synthetic data
                 synthetic_data = synthetic_gen.generate(num_samples=num_samples)
 
+                # Store synthetic data in session state
+                st.session_state.synthetic_data = synthetic_data
+
             st.success("✅ Synthetic data generation completed.")
 
             # Display synthetic data
             st.subheader("📄 Synthetic Data Sample")
-            st.dataframe(synthetic_data.head())
+            st.dataframe(st.session_state.synthetic_data.head())
 
             # Provide download option
-            csv = synthetic_data.to_csv(index=False).encode('utf-8')
+            csv = st.session_state.synthetic_data.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download Synthetic Data as CSV",
                 data=csv,
                 file_name='synthetic_data.csv',
-                mime='text/csv'
+                mime='text/csv',
+                key="download_button"
             )
-
-            # Optionally, compare distributions
-            st.subheader("📊 Compare Distributions")
-            column_to_compare = st.selectbox("Select a column to compare distributions", options=selected_columns)
-            if column_to_compare:
-                plot_distributions(original_data, synthetic_data, column_to_compare)
-
-                compare_correlations(original_data[selected_columns], synthetic_data[selected_columns], categorical_columns)
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
-            st.error(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
-def plot_distributions(real_data, synthetic_data, column):
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    axes[0].hist(real_data[column].dropna(), bins=30, alpha=0.7, color='blue', edgecolor='black', linewidth=1.2, density=True)
-    axes[0].set_title(f'Real {column} Density Distribution')
-    axes[0].set_xlabel(column)
-    axes[0].set_ylabel('Density')
-    axes[1].hist(synthetic_data[column].dropna(), bins=30, alpha=0.7, color='orange', edgecolor='black', linewidth=1.2, density=True)
-    axes[1].set_title(f'Synthetic {column} Density Distribution')
-    axes[1].set_xlabel(column)
-    axes[1].set_ylabel('Density')
-    plt.tight_layout()
-    st.pyplot(fig)
+    # Check if synthetic data exists in session state for plotting
+    if 'synthetic_data' in st.session_state:
+        synthetic_data = st.session_state.synthetic_data
+        plot_columns = selected_columns.copy()
 
-def convert_categories_to_integers(df, categorical_columns):
-    df_copy = df.copy()
-    for col in categorical_columns:
-        if col in df_copy.columns:
-            df_copy[col] = df_copy[col].astype('category').cat.codes
-    return df_copy
+        # Optionally, compare distributions
+        st.subheader("📊 Compare Distributions")
+        column_to_compare = st.selectbox(
+            "Select a column to compare distributions:",
+            options=plot_columns,
+            key="column_to_compare"
+        )
+        if column_to_compare:
+            try:
+                plot_distributions(original_data, synthetic_data, column_to_compare)
+                compare_correlations(original_data[plot_columns], synthetic_data[plot_columns], categorical_columns)
+            except Exception as e:
+                st.error(f"Error in plotting: {e}")
+                logger.error(traceback.format_exc())
 
-def compare_correlations(real_data, synthetic_data, categorical_columns):
-    # Convert categorical columns to integers
-    real_data_int = convert_categories_to_integers(real_data, categorical_columns)
-    synthetic_data_int = convert_categories_to_integers(synthetic_data, categorical_columns)
-    
-    # Calculate correlations
-    real_corr = real_data_int.corr()
-    synthetic_corr = synthetic_data_int.corr()
-    
-    # Create subplots for side-by-side heatmaps
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-    
-    # Plot real data correlation heatmap with smaller font size for annotations
-    sns.heatmap(real_corr, annot=True, fmt=".2f", cmap='coolwarm', vmin=-1, vmax=1, 
-                annot_kws={"size": 5}, ax=axes[0])  # Adjust font size with annot_kws
-    axes[0].set_title('Real Data Correlation')
-    
-    # Plot synthetic data correlation heatmap with smaller font size for annotations
-    sns.heatmap(synthetic_corr, annot=True, fmt=".2f", cmap='coolwarm', vmin=-1, vmax=1, 
-                annot_kws={"size": 5}, ax=axes[1])  # Adjust font size with annot_kws
-    axes[1].set_title('Synthetic Data Correlation')
-    
-    # Adjust layout and display the plot
-    plt.tight_layout()
-    st.pyplot(fig)
-
+def data_processing_settings():
+    with st.expander("🔧 Advanced Data Processing Settings"):
+        date_threshold = st.slider("Date Detection Threshold", 0.0, 1.0, 0.6, 0.05)
+        numeric_threshold = st.slider("Numeric Detection Threshold", 0.0, 1.0, 0.9, 0.05)
+        factor_threshold_ratio = st.slider("Factor Threshold Ratio", 0.0, 1.0, 0.4, 0.05)
+        factor_threshold_unique = st.number_input("Factor Threshold Unique", min_value=10, max_value=10000, value=1000, step=10)
+        dayfirst = st.checkbox("Day First in Dates", value=True)
+        convert_factors_to_int = st.checkbox("Convert Factors to Integers", value=True)
+        date_format = st.text_input("Date Format (e.g., '%Y-%m-%d')", value="", help="Leave blank to retain datetime dtype")
+        
+        # Save these settings to session state or pass them to processing functions
+        update_session_state('date_threshold', date_threshold)
+        update_session_state('numeric_threshold', numeric_threshold)
+        update_session_state('factor_threshold_ratio', factor_threshold_ratio)
+        update_session_state('factor_threshold_unique', factor_threshold_unique)
+        update_session_state('dayfirst', dayfirst)
+        update_session_state('convert_factors_to_int', convert_factors_to_int)
+        update_session_state('date_format', date_format)
 
 # =====================================
 # Main Function
@@ -1058,7 +1126,7 @@ def main():
     setup_page()
     initialize_session_state()
     uploaded_file, output_file_type, binning_method = sidebar_inputs()
-
+    data_processing_settings()
     # Update binning method in session state
     update_session_state('Binning_Method', binning_method)
 
@@ -1088,7 +1156,14 @@ def main():
         update_session_state('GLOBAL_DATA', processed_data.copy())
 
         if not st.session_state.ORIGINAL_DATA.empty:
+            # Display the original data's head
             st.dataframe(st.session_state.ORIGINAL_DATA.head())
+            
+            # Create a new dataframe to show column types
+            column_types = pd.DataFrame({col: [str(dtype)] for col, dtype in st.session_state.ORIGINAL_DATA.dtypes.items()})
+            
+            # Display the dataframe with column types
+            st.dataframe(column_types)
         # Reset processing flags upon new upload
         processing_flags = ['is_binning_done', 'is_geocoding_done', 'is_granular_location_done', 'is_unique_id_done']
         for flag in processing_flags:

@@ -8,6 +8,9 @@ import seaborn as sns
 import pandas as pd
 import math
 import os
+import numpy as np
+import datetime
+
 
 def plot_entropy(assessor):
     """
@@ -222,3 +225,145 @@ def plot_density_barplots(
 
     return fig
 
+# src/utils/utils_plotting.py
+
+# src/utils/utils_plotting.py
+
+def plot_distributions(original_df, synthetic_df, column):
+    """Plot and compare distributions of a numerical, categorical, or datetime column."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    if pd.api.types.is_datetime64_any_dtype(original_df[column]):
+        # For datetime columns, plot distributions by frequency over time
+        original_counts = original_df[column].dt.to_period('M').value_counts().sort_index()
+        synthetic_counts = synthetic_df[column].dt.to_period('M').value_counts().sort_index()
+        
+        original_counts.plot(label='Original', ax=ax)
+        synthetic_counts.plot(label='Synthetic', ax=ax)
+        ax.set_title(f'Date Distribution Comparison for Column: {column}')
+        ax.set_xlabel('Month')
+        ax.set_ylabel('Frequency')
+    elif pd.api.types.is_numeric_dtype(original_df[column]):
+        sns.kdeplot(original_df[column], label='Original', ax=ax)
+        sns.kdeplot(synthetic_df[column], label='Synthetic', ax=ax)
+        ax.set_title(f'Distribution Comparison for Numerical Column: {column}')
+    else:
+        original_counts = original_df[column].value_counts(normalize=True)
+        synthetic_counts = synthetic_df[column].value_counts(normalize=True)
+        original_counts.plot(kind='bar', alpha=0.5, label='Original', ax=ax)
+        synthetic_counts.plot(kind='bar', alpha=0.5, label='Synthetic', ax=ax)
+        ax.set_title(f'Distribution Comparison for Categorical Column: {column}')
+    
+    ax.legend()
+    st.pyplot(fig)
+
+def plot_date_distributions(original_df, synthetic_df, column):
+    """Plot and compare distributions of a datetime column."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Convert to period (e.g., monthly) for aggregation
+    original_period = original_df[column].dt.to_period('M').value_counts().sort_index()
+    synthetic_period = synthetic_df[column].dt.to_period('M').value_counts().sort_index()
+    
+    original_period.plot(label='Original', ax=ax)
+    synthetic_period.plot(label='Synthetic', ax=ax)
+    
+    ax.set_title(f'Date Distribution Comparison for Column: {column}')
+    ax.set_xlabel('Month')
+    ax.set_ylabel('Frequency')
+    ax.legend()
+    st.pyplot(fig)
+
+def compare_correlations(original_df, synthetic_df, categorical_columns):
+    """Compare correlation matrices of original and synthetic data."""
+    # Compute correlation matrices
+    original_corr = original_df.select_dtypes(include=['number']).corr()
+    synthetic_corr = synthetic_df.select_dtypes(include=['number']).corr()
+
+    # Plot original correlations
+    fig, ax = plt.subplots(1, 2, figsize=(16, 6))
+    sns.heatmap(original_corr, annot=True, fmt=".2f", cmap='coolwarm', ax=ax[0])
+    ax[0].set_title('Original Data Correlation Matrix')
+
+    # Plot synthetic correlations
+    sns.heatmap(synthetic_corr, annot=True, fmt=".2f", cmap='coolwarm', ax=ax[1])
+    ax[1].set_title('Synthetic Data Correlation Matrix')
+
+    st.pyplot(fig)
+
+
+def plot_distributions(real_data, synthetic_data, column):
+    """Plot the distributions of a specific column in real and synthetic data."""
+    try:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        if pd.api.types.is_numeric_dtype(real_data[column]):
+            sns.kdeplot(real_data[column].dropna(), ax=axes[0], color='blue')
+            axes[0].set_title(f'Real {column} Density Distribution')
+            sns.kdeplot(synthetic_data[column].dropna(), ax=axes[1], color='orange')
+            axes[1].set_title(f'Synthetic {column} Density Distribution')
+        else:
+            sns.countplot(x=real_data[column], ax=axes[0], color='blue')
+            axes[0].set_title(f'Real {column} Distribution')
+            sns.countplot(x=synthetic_data[column], ax=axes[1], color='orange')
+            axes[1].set_title(f'Synthetic {column} Distribution')
+        plt.tight_layout()
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Error plotting distributions: {e}")
+        st.error(traceback.format_exc())
+
+
+def convert_categories_to_integers(df, categorical_columns):
+    """Convert categorical columns to integer codes."""
+    df_copy = df.copy()
+    for col in categorical_columns:
+        if col in df_copy.columns:
+            df_copy[col] = df_copy[col].astype('category').cat.codes
+    return df_copy
+
+def compare_correlations(real_data, synthetic_data, categorical_columns):
+    """Compare the correlation matrices of real and synthetic data."""
+    try:
+        # Convert categorical columns to integers
+        real_data_int = convert_categories_to_integers(real_data, categorical_columns)
+        synthetic_data_int = convert_categories_to_integers(synthetic_data, categorical_columns)
+        
+        # Calculate correlations
+        real_corr = real_data_int.corr()
+        synthetic_corr = synthetic_data_int.corr()
+        
+        # Create subplots for side-by-side heatmaps
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+                                            
+        # Plot real data correlation heatmap
+        sns.heatmap(
+            real_corr,
+            annot=True,
+            fmt=".2f",
+            cmap='coolwarm',
+            vmin=-1,
+            vmax=1,
+            annot_kws={"size": 5},
+            ax=axes[0]
+        )
+        axes[0].set_title('Real Data Correlation')
+        
+        # Plot synthetic data correlation heatmap
+        sns.heatmap(
+            synthetic_corr,
+            annot=True,
+            fmt=".2f",
+            cmap='coolwarm',
+            vmin=-1,
+            vmax=1,
+            annot_kws={"size": 5},
+            ax=axes[1]
+        )
+        axes[1].set_title('Synthetic Data Correlation')
+        
+        # Adjust layout and display the plot
+        plt.tight_layout()
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Error comparing correlations: {e}")
+        st.error(traceback.format_exc())
