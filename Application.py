@@ -1,17 +1,14 @@
 # application.py
 
 import os
+import sys
 import traceback
 import pandas as pd
-import numpy as np
-import seaborn as sns
 import streamlit as st
-import matplotlib.pyplot as plt
 from src.utils import (
     hide_streamlit_style,
     load_data,
     align_dataframes,
-    run_processing,
     get_binning_configuration,
     download_binned_data,
     perform_binning,
@@ -23,13 +20,14 @@ from src.utils import (
     compare_correlations,
     plot_distributions,
     compare_correlations,
-    plot_distributions
+    plot_distributions,
+    save_dataframe,
+    initialize_session_state,
+    update_session_state
 )
 from src.config import (
-    PLOTS_DIR,
     PROCESSED_DATA_DIR,
     REPORTS_DIR,
-    UNIQUE_IDENTIFICATIONS_DIR,
     CAT_MAPPING_DIR,
     DATA_DIR,
     LOGS_DIR
@@ -37,11 +35,7 @@ from src.config import (
 
 # Import location granularizer functions
 from src.location_granularizer import (
-    extract_gpe_entities,
-    interpret_location,
-    geocode_location_with_cache,
     detect_geographical_columns,
-    reverse_geocode_with_cache,
     perform_geocoding,
     generate_granular_location,
     prepare_map_data
@@ -53,65 +47,8 @@ from src.data_anonymizer import DataAnonymizer
 # Import SyntheticDataGenerator Class
 from src.synthetic_data_generator import SyntheticDataGenerator
 
-# =====================================
-# Helper Functions for Session State
-# =====================================
-
-def initialize_session_state():
-    """Initialize all necessary session state variables."""
-    default_session_state = {
-        # Original Data
-        'UPLOADED_ORIGINAL_DATA': pd.DataFrame(),
-        'ORIGINAL_DATA': pd.DataFrame(),
-        'GLOBAL_DATA': pd.DataFrame(),
-        
-        # Binning Session States
-        'Binning_Selected_Columns': [],
-        'Binning_Method': 'Quantile',  # Default value
-        'Binning_Configuration': {},
-        
-        # Location Granularizer Session States
-        'Location_Selected_Columns': [],
-        'geocoded_data': pd.DataFrame(),
-        'geocoded_dict': {},
-        
-        # Unique Identification Analysis Session States
-        'Unique_ID_Results': {},
-        
-        # Anonymization Session States
-        'ANONYMIZED_DATA': pd.DataFrame(),
-        'ANONYMIZATION_REPORT': pd.DataFrame(),
-        
-        # Progress Indicators
-        'geocoding_progress': 0,
-        'granular_location_progress': 0,
-        
-        # Flags for Processing Steps 
-        'is_binning_done': False,
-        'is_geocoding_done': False,
-        'is_granular_location_done': False,
-        'is_unique_id_done': False
-    }
-    
-    for key, value in default_session_state.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-    
-    # Initialize the session_state_logs if not present
-    if 'session_state_logs' not in st.session_state:
-        st.session_state['session_state_logs'] = []
-
-def update_session_state(key: str, value):
-    """
-    Update a session state variable and log the update.
-
-    Args:
-        key (str): The key of the session state variable.
-        value: The value to set for the session state variable.
-    """
-    st.session_state[key] = value
-    log_message = f"🔄 **Session State Updated:** `{key}` has been set/updated."
-    st.session_state['session_state_logs'].append(log_message)
+# Import Data Processing Class
+from src.data_processing import DataProcessor
 
 # =====================================
 # Page Configuration and Sidebar
@@ -127,6 +64,18 @@ def setup_page():
     hide_streamlit_style()
     st.title('🛠️ Dynamic De-Identification')
 
+def display_logs():
+    """Display application logs within the Streamlit interface."""
+    st.header("📜 Application Logs")
+    log_file = st.session_state.get('log_file', os.path.join(LOGS_DIR, 'app.log'))
+    
+    if os.path.exists(log_file):
+        with open(log_file, 'r') as f:
+            logs = f.read()
+        st.text_area("🔍 Logs", logs, height=300)
+    else:
+        st.write("No logs available.")
+
 def sidebar_inputs():
     """Render the sidebar with file upload, settings, binning options, and info."""
     with st.sidebar:
@@ -135,19 +84,18 @@ def sidebar_inputs():
         output_file_type = st.selectbox('📁 Select Output File Type', ['csv', 'pkl'], index=0)
         st.markdown("---")
 
-        # Display warning if CSV is selected
-        if output_file_type == 'csv':
-            st.warning("⚠️ **Note:** Using CSV will result in the loss of some meta-data regarding data types in downloaded files.")
 
         st.header("⚙️ Binning Options")
         binning_method = st.selectbox('🔧 Select Binning Method', ['Quantile', 'Equal Width'])
         if binning_method == 'Equal Width':
             st.warning("⚠️ **Note:** Using Equal Width will drastically affect the distribution of your data. (Large integrity loss)")  
-        
-        st.markdown("---")
 
         st.header("ℹ️ About")
         st.info("""This application allows you to ... (updates will be added upon completion)""")
+        
+        st.markdown("---")
+
+        st.session_state.show_logs = st.checkbox("🖥️ Show Logs in Interface", value=False, help="Display application logs within the app interface.")
         
         # ============================
         # Special Section: Session State Info
@@ -183,6 +131,54 @@ def sidebar_inputs():
 # Data Loading and Saving
 # =====================================
 
+@st.cache_data
+def run_processing_cached(
+    save_type='csv',
+    output_filename='Processed_Data.csv',
+    file_path='Data.csv',
+    date_threshold=0.6,
+    numeric_threshold=0.9,
+    factor_threshold_ratio=0.4,
+    factor_threshold_unique=500,
+    dayfirst=False,
+    convert_factors_to_int=False,
+    date_format=None
+):
+    """
+    Initializes and runs the data processor, saving outputs to the designated directories.
+    """
+    try:
+        # Define output file paths
+        output_filepath = os.path.join(PROCESSED_DATA_DIR, output_filename)
+        report_path = os.path.join(REPORTS_DIR, 'Type_Conversion_Report.csv')
+        
+        processor = DataProcessor(
+            input_filepath=os.path.join(DATA_DIR, file_path),
+            output_filepath=output_filepath,
+            report_path=report_path,
+            return_category_mappings=True,
+            mapping_directory=CAT_MAPPING_DIR,
+            parallel_processing=False,  # Set to True if parallel processing is desired
+            date_threshold=date_threshold,
+            numeric_threshold=numeric_threshold,
+            factor_threshold_ratio=factor_threshold_ratio,
+            factor_threshold_unique=factor_threshold_unique,
+            dayfirst=dayfirst,
+            log_level='INFO',
+            log_file=None,
+            convert_factors_to_int=convert_factors_to_int,
+            date_format=date_format,  # Keep as None to retain datetime dtype
+            save_type=save_type
+        )
+        # Button to process the data
+        processed_data = processor.process()
+        return processed_data
+        
+    except Exception as e:
+        st.error(f"Error during data processing: {e}")
+        st.stop()
+
+
 def load_and_preview_data(uploaded_file, input_file_type):
     """Load the uploaded data and display a preview."""
     try:
@@ -215,41 +211,6 @@ def save_raw_data(Data, output_file_type):
         st.stop()
     return mapped_save_type, data_path
 
-def save_dataframe(df, file_type, filename, subdirectory):
-    """
-    Saves the DataFrame or Figure to the specified file type within a subdirectory.
-    """
-    try:
-        if subdirectory == "processed_data":
-            dir_path = PROCESSED_DATA_DIR
-        elif subdirectory == "reports":
-            dir_path = REPORTS_DIR
-        elif subdirectory == "unique_identifications":
-            dir_path = UNIQUE_IDENTIFICATIONS_DIR
-        elif subdirectory == "plots":
-            dir_path = PLOTS_DIR
-        else:
-            raise ValueError("Unsupported subdirectory for saving.")
-
-        os.makedirs(dir_path, exist_ok=True)  # Ensure directory exists
-        file_path = os.path.join(dir_path, filename)
-        if file_type == 'csv':
-            df.to_csv(file_path, index=False)
-        elif file_type == 'pkl':
-            df.to_pickle(file_path)
-        elif file_type == 'png':
-            # Handle saving plots
-            if isinstance(df, plt.Figure):
-                df.savefig(file_path, bbox_inches='tight')
-            else:
-                raise ValueError("Unsupported data type for saving as PNG.")
-        else:
-            raise ValueError("Unsupported file type for saving.")
-
-        return file_path
-    except Exception as e:
-        st.error(f"Error saving file `{filename}`: {e}")
-        st.stop()
 
 # =====================================
 # Binning Tab Functionality
@@ -327,12 +288,21 @@ def binning_tab():
                         
                         # Display entropy plot
                         st.pyplot(entropy_fig)
-            
+
+            # Add association rule mining parameters
+            with st.expander("🔍 Association Rule Mining Settings"):
+                min_support = st.slider("Minimum Support", 0.01, 1.0, 0.05, 0.01)
+                min_threshold = st.slider("Minimum Confidence Threshold", 0.01, 1.0, 0.05, 0.01)
             # **Add a button to run Association Rule Mining**
             if st.button("🔍 Run Association Rule Mining"):
                 try:
-                    # Perform association rule mining
-                    perform_association_rule_mining(OG_Data_BinTab, Data_BinTab, selected_columns_binning)
+                    perform_association_rule_mining(
+                        OG_Data_BinTab, 
+                        Data_BinTab, 
+                        selected_columns_binning,
+                        min_support=min_support,
+                        min_threshold=min_threshold
+                    )
                     st.success("✅ Association Rule Mining completed successfully!")
                 except Exception as e:
                     st.error(f"Error during Association Rule Mining: {e}")
@@ -357,10 +327,6 @@ def binning_tab():
 
         except Exception as e:
             st.error(f"Error during binning: {e}")
-    elif selected_columns_binning:
-        st.info("👉 Adjust the bins using the sliders above to run binning.")
-    else:
-        st.info("👉 Please select columns to bin.")
 
 # =====================================
 # Location Granulariser Tab Functionality
@@ -746,7 +712,7 @@ def data_anonymization_tab():
     max_iterations = st.slider(
         "Set the maximum number of iterations",
         min_value=1,
-        max_value=100,
+        max_value=300,
         value=10,
         step=1,
         help="Maximum number of generalization iterations during anonymization."
@@ -757,7 +723,7 @@ def data_anonymization_tab():
         k_value = st.slider(
             "Set the value of k (for k-anonymity)",
             min_value=2,
-            max_value=100,
+            max_value=original_data.shape[0],
             value=2,
             step=1,
             help="k value determines the level of anonymity."
@@ -770,7 +736,7 @@ def data_anonymization_tab():
         l_value = st.slider(
             "Set the value of l (for l-diversity)",
             min_value=1,
-            max_value=100,
+            max_value=original_data.shape[0],
             value=2,
             step=1,
             help="l value determines the level of diversity."
@@ -808,7 +774,7 @@ def data_anonymization_tab():
             # Initialize DataAnonymizer with debug callback (optional)
             anonymizer = DataAnonymizer(
                 original_data=original_data,
-                debug_callback=st.write  # Pass st.write for debugging
+                debug_callback=None  # Pass st.write for debugging
             )
 
             # Apply anonymization
@@ -1021,6 +987,7 @@ def synthetic_data_generation_tab():
         }
     else:
         model_params = {}  # No parameters for Gaussian Copula
+    
 
     # Input number of synthetic samples to generate
     num_samples = st.number_input(
@@ -1100,22 +1067,52 @@ def synthetic_data_generation_tab():
 
 def data_processing_settings():
     with st.expander("🔧 Advanced Data Processing Settings"):
-        date_threshold = st.slider("Date Detection Threshold", 0.0, 1.0, 0.6, 0.05)
-        numeric_threshold = st.slider("Numeric Detection Threshold", 0.0, 1.0, 0.9, 0.05)
-        factor_threshold_ratio = st.slider("Factor Threshold Ratio", 0.0, 1.0, 0.4, 0.05)
-        factor_threshold_unique = st.number_input("Factor Threshold Unique", min_value=10, max_value=10000, value=1000, step=10)
-        dayfirst = st.checkbox("Day First in Dates", value=True)
-        convert_factors_to_int = st.checkbox("Convert Factors to Integers", value=True)
-        date_format = st.text_input("Date Format (e.g., '%Y-%m-%d')", value="", help="Leave blank to retain datetime dtype")
+        st.session_state.date_threshold = st.slider("Date Detection Threshold", 0.0, 1.0, st.session_state.get('date_threshold', 0.0), 0.05)
+        st.session_state.numeric_threshold = st.slider("Numeric Detection Threshold", 0.0, 1.0, st.session_state.get('numeric_threshold', 0.0), 0.05)
+        st.session_state.factor_threshold_ratio = st.slider("Factor Threshold Ratio", 0.0, 1.0, st.session_state.get('factor_threshold_ratio', 0.0), 0.05)
+        st.session_state.factor_threshold_unique = st.number_input("Factor Threshold Unique", 
+                                                                   min_value=10, 
+                                                                   max_value=10000, 
+                                                                   value=st.session_state.get('factor_threshold_unique', 10), 
+                                                                   step=10
+                                                                   )
+        st.session_state.dayfirst = st.checkbox("Day First in Dates", value=st.session_state.get('dayfirst', False))
+        st.session_state.convert_factors_to_int = st.checkbox("Convert Factors to Integers", value=st.session_state.get('convert_factors_to_int', False))
+        st.session_state.date_format = st.text_input("Date Format (e.g., '%Y-%m-%d')", value=st.session_state.get('date_format', ''),
+                                                     help="Leave blank to retain datetime dtype"
+                                                     )
+
+
+# =====================================
+# Help Tab
+# =====================================
+
+def help_tab():
+    st.header("❓ Help & Documentation")
+    st.markdown("""
+        ### How to Use This Application
         
-        # Save these settings to session state or pass them to processing functions
-        update_session_state('date_threshold', date_threshold)
-        update_session_state('numeric_threshold', numeric_threshold)
-        update_session_state('factor_threshold_ratio', factor_threshold_ratio)
-        update_session_state('factor_threshold_unique', factor_threshold_unique)
-        update_session_state('dayfirst', dayfirst)
-        update_session_state('convert_factors_to_int', convert_factors_to_int)
-        update_session_state('date_format', date_format)
+        1. **Upload Data:** Start by uploading your dataset in CSV or Pickle format.
+        2. **Data Processing:** Adjust data processing settings in the sidebar or use advanced settings for granular control.
+        3. **Manual Binning:** Select columns to bin and configure binning parameters.
+        4. **Location Granularizer:** Geocode location data and generate granular location information.
+        5. **Unique Identification Analysis:** Analyze the uniqueness of your data based on selected columns.
+        6. **Data Anonymization:** Apply anonymization techniques to protect sensitive information.
+        7. **Synthetic Data Generation:** Generate synthetic datasets based on your original data.
+        
+        ### Understanding the Settings
+        - **Binning Methods:** Quantile ensures equal-sized bins, while Equal Width divides data into bins of equal range.
+        - **Anonymization Methods:** 
+            - **k-anonymity:** Ensures that each record is indistinguishable from at least k-1 others.
+            - **l-diversity:** Extends k-anonymity by ensuring diversity in sensitive attributes.
+            - **t-closeness:** Ensures that the distribution of sensitive attributes is close to the original.
+        
+        ### Best Practices
+        - **Start Simple:** Begin with default settings to understand the workflow before customizing.
+        - **Validate Results:** Use the evaluation metrics provided to assess the quality of anonymization and synthetic data.
+        - **Consult Documentation:** Refer to the README documentation for detailed explanations of methods and parameters.
+    """)
+
 
 # =====================================
 # Main Function
@@ -1127,8 +1124,35 @@ def main():
     initialize_session_state()
     uploaded_file, output_file_type, binning_method = sidebar_inputs()
     data_processing_settings()
+    
     # Update binning method in session state
-    update_session_state('Binning_Method', binning_method)
+    st.session_state['Binning_Method'] = binning_method
+
+    # Adjust logging based on user selection
+    log_level = st.session_state.get('log_level', 'INFO').upper()
+    logging.getLogger().setLevel(getattr(logging, log_level, logging.INFO))
+    
+    # If log_file is not set, default to 'app.log' in LOGS_DIR
+    if 'log_file' not in st.session_state:
+        st.session_state['log_file'] = os.path.join(LOGS_DIR, 'app.log')
+    
+    # Configure logging handlers
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    
+    handlers = [logging.StreamHandler(sys.stdout)]
+    if st.session_state.get('log_file'):
+        handlers.append(logging.FileHandler(st.session_state['log_file']))
+    
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=handlers
+    )
+    
+    # Display logs if user opted to
+    if st.session_state.show_logs:
+        display_logs()
 
     if uploaded_file is not None:
         # Determine input file type
@@ -1142,13 +1166,20 @@ def main():
 
         load_and_preview_data(uploaded_file, input_file_type)
         mapped_save_type, file_path = save_raw_data(st.session_state.UPLOADED_ORIGINAL_DATA, output_file_type)
-
-        processed_data = run_processing(
+        
+        
+        processed_data = run_processing_cached(
             save_type=mapped_save_type,
             output_filename=f'processed_data.{output_file_type}',
-            file_path=os.path.join(DATA_DIR, file_path)
+            file_path=os.path.join(DATA_DIR, file_path),
+            date_threshold=st.session_state.date_threshold,
+            numeric_threshold=st.session_state.numeric_threshold,
+            factor_threshold_ratio=st.session_state.factor_threshold_ratio,
+            factor_threshold_unique=st.session_state.factor_threshold_unique,
+            dayfirst=st.session_state.dayfirst,
+            convert_factors_to_int=st.session_state.convert_factors_to_int,
+            date_format=st.session_state.date_format
         )
-
         # Update ORIGINAL_DATA
         update_session_state('ORIGINAL_DATA', processed_data.copy())
 
@@ -1178,7 +1209,8 @@ def main():
         "📍 Location Data Geocoding Granulariser", 
         "🔍 Unique Identification Analysis",
         "🔐 Data Anonymization",
-        "🧪 Synthetic Data Generation"  # New Tab
+        "🧪 Synthetic Data Generation",  # New Tab
+        "❓ Help & Documentation"  # New Tab
     ])
     
 
@@ -1211,6 +1243,13 @@ def main():
     ######################
     with tabs[4]:
         synthetic_data_generation_tab()
+    
+    ######################
+    # Help & Documentation Tab
+    ######################
+    with tabs[-1]:
+        help_tab()
+
 
 # =====================================
 # Entry Point

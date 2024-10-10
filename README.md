@@ -29,6 +29,7 @@
     - [DataAnonymizer Class](#dataanonymizer-class)
     - [SyntheticDataGenerator Class](#syntheticdatagenerator-class)
     - [DataProcessor Class](#dataprocessor-class)
+      - [Advanced Data Processing Settings](#advanced-data-processing-settings)
     - [DataBinner Class](#databinner-class)
     - [DataIntegrityAssessor Class](#dataintegrityassessor-class)
     - [UniqueBinIdentifier Class](#uniquebinidentifier-class)
@@ -331,6 +332,8 @@ The main application code is in ``Application.py``. It orchestrates the Streamli
 
 ## Utilities
 
+The application includes a suite of utility modules that handle various backend processes, ensuring modularity and maintainability. Below is an overview of these utility modules:
+
 ### Utility Modules
 
 #### Binning Utilities (`utils_bintab.py`)
@@ -338,19 +341,15 @@ The main application code is in ``Application.py``. It orchestrates the Streamli
 Contains functions related to the binning process in the application.
 
 - **`get_binning_configuration(Data, selected_columns_binning)`**: Generates binning configuration sliders for selected columns in the Binning Tab.
-
 - **`perform_binning(original_data, binning_method, bin_dict)`**: Performs the binning process on selected columns and handles exceptions.
-
 - **`binning_summary(binned_df, binned_columns, bin_dict)`**: Provides a summary of the binning results, including binned columns categorization, bin ranges, and combined categories.
-
-- **`perform_association_rule_mining(original_df, binned_df, selected_columns)`**: Performs association rule mining on the selected columns of the original and binned DataFrames, generating reports and visualizations.
+- **`perform_association_rule_mining(original_df, binned_df, selected_columns, min_support, min_threshold)`**: Performs association rule mining on the selected columns, generating reports and visualizations.
 
 #### Download Utilities (`utils_download.py`)
 
 Handles downloading of data from the application.
 
 - **`download_binned_data(data_full, data, file_type_download='csv')`**: Manages the download options for binned data, allowing users to select between only binned columns or full data.
-
 - **`handle_download_binned_data(data, file_type_download='csv')`**: Facilitates the actual download of the binned data in the specified file type.
 
 #### General Utilities (`utils_general.py`)
@@ -358,17 +357,16 @@ Handles downloading of data from the application.
 Contains general utility functions used across the application.
 
 - **`hide_streamlit_style()`**: Hides Streamlit's default menu and footer for a cleaner interface.
-
-- **`run_processing(save_type='csv', output_filename='Processed_Data.csv', file_path='Data.csv')`**: Initializes and runs the data processor, saving outputs to designated directories.
+- **`save_dataframe(df, file_type, filename, subdirectory)`**: Saves DataFrames or figures to specified file types within designated subdirectories.
+- **`initialize_session_state()`**: Initializes all necessary session state variables.
+- **`update_session_state(key, value)`**: Updates a session state variable and logs the update.
 
 #### Integrity Tab Utilities (`utils_integritytab.py`)
 
 Handles data integrity assessment processes.
 
 - **`perform_integrity_assessment(OG_Data_BinTab, Data_BinTab, selected_columns_binning)`**: Assesses data integrity after binning.
-
 - **`handle_integrity_assessment(original_df, binned_df)`**: Generates integrity loss reports and entropy plots.
-
 - **`perform_unique_identification_analysis(original_for_assessment, data_for_assessment, selected_columns_uniquetab, min_comb_size, max_comb_size)`**: Performs unique identification analysis.
 
 #### Loading Utilities (`utils_loading.py`)
@@ -376,9 +374,7 @@ Handles data integrity assessment processes.
 Manages data loading and alignment.
 
 - **`load_data(file_type, uploaded_file)`**: Loads the uploaded file into a Pandas DataFrame without any processing.
-
 - **`align_dataframes(original_df, binned_df)`**: Ensures both DataFrames have the same columns.
-
 - **`load_dataframe(file_path, file_type)`**: Loads a DataFrame from the specified file path and type.
 
 #### Plotting Utilities (`utils_plotting.py`)
@@ -386,9 +382,7 @@ Manages data loading and alignment.
 Generates various plots for data visualization.
 
 - **`plot_entropy(assessor)`**: Generates an entropy plot.
-
 - **`plot_density_plots_streamlit(original_df, binned_df, selected_columns)`**: Generates density plots for original and binned data side by side.
-
 - **`plot_density_barplots(dataframe, columns, figsize, save_path, plot_style)`**: Creates bar plots with density overlays for selected columns.
 
 ### Location Granularizer Utilities (`geocoding.py`)
@@ -502,6 +496,7 @@ synthetic_data = synthetic_gen.generate(num_samples=1000)
 - ``get_model()``: Retrieves the trained model object.
 - ``get_dataframe()``: Retrieves the original DataFrame used for training.
 
+
 ### DataProcessor Class
 
 The `DataProcessor` class, found in ``src/data_processing/Process_Data.py``, handles data type detection, conversion, and initial preprocessing steps.
@@ -514,6 +509,20 @@ The `DataProcessor` class, found in ``src/data_processing/Process_Data.py``, han
 - **Parallel Processing**: Supports parallel processing for faster execution.
 
 **Usage Example:**
+
+#### Advanced Data Processing Settings
+
+In the sidebar, under "📂 Upload & Settings," you can access "🔧 Advanced Data Processing Settings" to customize how your data is processed before analysis. These settings offer granular control over data type detection and conversion.
+
+- **Date Detection Threshold (`date_threshold`):** Determines the sensitivity for detecting date columns based on data patterns.
+- **Numeric Detection Threshold (`numeric_threshold`):** Sets the threshold for classifying columns as numerical.
+- **Factor Threshold Ratio (`factor_threshold_ratio`):** Controls the ratio used to determine factor (categorical) columns.
+- **Factor Threshold Unique (`factor_threshold_unique`):** Specifies the minimum number of unique values required for a column to be considered a factor.
+- **Day First in Dates (`dayfirst`):** If enabled, interprets date formats with the day appearing before the month.
+- **Convert Factors to Integers (`convert_factors_to_int`):** When enabled, converts categorical factors to integer representations.
+- **Date Format (`date_format`):** Allows you to specify the date format (e.g., `'%Y-%m-%d'`) for accurate parsing. Leave blank to retain the default datetime dtype.
+
+**Note:** Adjusting these settings can significantly impact how your data is interpreted and processed. It's recommended to familiarize yourself with each parameter to optimize data handling.
 
 ```
 python

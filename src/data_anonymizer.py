@@ -37,12 +37,12 @@ class DataAnonymizer:
         for col in quasi_identifiers:
             unique_values = self.original_data[col].nunique()
             if pd.api.types.is_numeric_dtype(self.original_data[col]):
-                generalization_params[col] = {'bins': min(30, unique_values), 'type': 'numeric'}
+                generalization_params[col] = {'bins': min(50, unique_values), 'type': 'numeric'}
             elif pd.api.types.is_datetime64_any_dtype(self.original_data[col]):
-                generalization_params[col] = {'bins': min(30, unique_values), 'type': 'datetime'}
+                generalization_params[col] = {'bins': min(50, unique_values), 'type': 'datetime'}
                 datetime_cols.append(col)
             elif pd.api.types.is_categorical_dtype(self.original_data[col]) or pd.api.types.is_object_dtype(self.original_data[col]):
-                generalization_params[col] = {'bins': min(30, unique_values), 'type': 'categorical'}
+                generalization_params[col] = {'bins': min(50, unique_values), 'type': 'categorical'}
             else:
                 generalization_params[col] = {'type': 'unsupported'}
 

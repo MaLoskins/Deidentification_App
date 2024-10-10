@@ -99,7 +99,7 @@ def plot_density_barplots(
         if not (
             pd.api.types.is_numeric_dtype(df[col]) or
             pd.api.types.is_datetime64_any_dtype(df[col]) or
-            pd.api.types.is_categorical_dtype(df[col])
+            (df[col].dtype) == 'category'
         ):
             raise TypeError(
                 f"Column '{col}' is not of a supported dtype (number, datetime, category)."
@@ -139,7 +139,7 @@ def plot_density_barplots(
                 ax.set_xlabel(col)
                 ax.set_ylabel('Density')
 
-            elif pd.api.types.is_categorical_dtype(df[col]):
+            elif (df[col].dtype)=='category':
                 # Categorical column
                 counts = df[col].value_counts().sort_index()
                 categories = counts.index.astype(str)
@@ -161,7 +161,8 @@ def plot_density_barplots(
                     fill=True,
                     alpha=0.2,
                     bw_adjust=0.5,
-                    label='Density'
+                    label='Density',
+                    warn_singular=False
                 )
 
                 if len(categories) <= 20:
@@ -225,9 +226,6 @@ def plot_density_barplots(
 
     return fig
 
-# src/utils/utils_plotting.py
-
-# src/utils/utils_plotting.py
 
 def plot_distributions(original_df, synthetic_df, column):
     """Plot and compare distributions of a numerical, categorical, or datetime column."""
@@ -243,19 +241,44 @@ def plot_distributions(original_df, synthetic_df, column):
         ax.set_title(f'Date Distribution Comparison for Column: {column}')
         ax.set_xlabel('Month')
         ax.set_ylabel('Frequency')
+    
     elif pd.api.types.is_numeric_dtype(original_df[column]):
-        sns.kdeplot(original_df[column], label='Original', ax=ax)
-        sns.kdeplot(synthetic_df[column], label='Synthetic', ax=ax)
+        sns.kdeplot(original_df[column], label='Original', ax=ax, warn_singular=False)
+        sns.kdeplot(synthetic_df[column], label='Synthetic', ax=ax, warn_singular=False)
         ax.set_title(f'Distribution Comparison for Numerical Column: {column}')
+        ax.set_xlabel('Value')
+        ax.set_ylabel('Density')
+    
     else:
+        # For categorical columns
         original_counts = original_df[column].value_counts(normalize=True)
         synthetic_counts = synthetic_df[column].value_counts(normalize=True)
-        original_counts.plot(kind='bar', alpha=0.5, label='Original', ax=ax)
-        synthetic_counts.plot(kind='bar', alpha=0.5, label='Synthetic', ax=ax)
+        
+        # Determine if labels should be displayed
+        num_bars = len(original_counts)
+        show_labels = num_bars <= 30
+        
+        # Plot Original Data
+        ax.bar(original_counts.index, original_counts.values, alpha=0.5, label='Original')
+        
+        # Plot Synthetic Data
+        ax.bar(synthetic_counts.index, synthetic_counts.values, alpha=0.5, label='Synthetic')
+        
         ax.set_title(f'Distribution Comparison for Categorical Column: {column}')
+        ax.set_xlabel('Category')
+        ax.set_ylabel('Proportion')
+        
+        if not show_labels:
+            # Rotate x-axis labels for better readability without overcrowding
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=90, fontsize=8)
+            st.info(f"Labels hidden for columns with more than 30 categories to improve readability.")
+        else:
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
     
     ax.legend()
+    plt.tight_layout()
     st.pyplot(fig)
+
 
 def plot_date_distributions(original_df, synthetic_df, column):
     """Plot and compare distributions of a datetime column."""
@@ -292,27 +315,6 @@ def compare_correlations(original_df, synthetic_df, categorical_columns):
     st.pyplot(fig)
 
 
-def plot_distributions(real_data, synthetic_data, column):
-    """Plot the distributions of a specific column in real and synthetic data."""
-    try:
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-        if pd.api.types.is_numeric_dtype(real_data[column]):
-            sns.kdeplot(real_data[column].dropna(), ax=axes[0], color='blue')
-            axes[0].set_title(f'Real {column} Density Distribution')
-            sns.kdeplot(synthetic_data[column].dropna(), ax=axes[1], color='orange')
-            axes[1].set_title(f'Synthetic {column} Density Distribution')
-        else:
-            sns.countplot(x=real_data[column], ax=axes[0], color='blue')
-            axes[0].set_title(f'Real {column} Distribution')
-            sns.countplot(x=synthetic_data[column], ax=axes[1], color='orange')
-            axes[1].set_title(f'Synthetic {column} Distribution')
-        plt.tight_layout()
-        st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Error plotting distributions: {e}")
-        st.error(traceback.format_exc())
-
-
 def convert_categories_to_integers(df, categorical_columns):
     """Convert categorical columns to integer codes."""
     df_copy = df.copy()
@@ -321,19 +323,19 @@ def convert_categories_to_integers(df, categorical_columns):
             df_copy[col] = df_copy[col].astype('category').cat.codes
     return df_copy
 
-def compare_correlations(real_data, synthetic_data, categorical_columns):
-    """Compare the correlation matrices of real and synthetic data."""
+def compare_correlations(original_df, synthetic_df, categorical_columns):
+    """Compare correlation matrices of original and synthetic data."""
     try:
         # Convert categorical columns to integers
-        real_data_int = convert_categories_to_integers(real_data, categorical_columns)
-        synthetic_data_int = convert_categories_to_integers(synthetic_data, categorical_columns)
+        real_data_int = convert_categories_to_integers(original_df, categorical_columns)
+        synthetic_data_int = convert_categories_to_integers(synthetic_df, categorical_columns)
         
         # Calculate correlations
         real_corr = real_data_int.corr()
         synthetic_corr = synthetic_data_int.corr()
         
         # Create subplots for side-by-side heatmaps
-        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
                                             
         # Plot real data correlation heatmap
         sns.heatmap(
@@ -346,7 +348,7 @@ def compare_correlations(real_data, synthetic_data, categorical_columns):
             annot_kws={"size": 5},
             ax=axes[0]
         )
-        axes[0].set_title('Real Data Correlation')
+        axes[0].set_title('Original Data Correlation Matrix')
         
         # Plot synthetic data correlation heatmap
         sns.heatmap(
@@ -359,11 +361,20 @@ def compare_correlations(real_data, synthetic_data, categorical_columns):
             annot_kws={"size": 5},
             ax=axes[1]
         )
-        axes[1].set_title('Synthetic Data Correlation')
+        axes[1].set_title('Synthetic Data Correlation Matrix')
         
-        # Adjust layout and display the plot
+        # Adjust layout
         plt.tight_layout()
+        
+        # Optionally, limit the size or rotation of labels if matrices are large
+        if len(real_corr.columns) > 30:
+            for ax in axes:
+                ax.set_xticklabels(ax.get_xticklabels(), rotation=90, fontsize=6)
+                ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=6)
+            st.info("Correlation matrix labels are rotated and resized for better readability.")
+        
         st.pyplot(fig)
     except Exception as e:
         st.error(f"Error comparing correlations: {e}")
         st.error(traceback.format_exc())
+

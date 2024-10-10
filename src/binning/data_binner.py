@@ -9,7 +9,7 @@ class DataBinner:
     A class to bin specified columns in a Pandas DataFrame based on provided bin counts and binning methods.
     """
     
-    def __init__(self, Data: pd.DataFrame, method: str = 'equal width'):
+    def __init__(self, Data: pd.DataFrame, method: str = 'quantile'):
         """
             Initializes the DataBinner with the original DataFrame and binning method.
         """
@@ -73,7 +73,7 @@ class DataBinner:
                     self.binned_columns['float'].append(col)
                     self.binned_columns[f'{col}_bins'] = bin_labels
                 
-                elif pd.api.types.is_categorical_dtype(Bin_Data[col]) or pd.api.types.is_object_dtype(Bin_Data[col]):
+                elif isinstance(Bin_Data[col].dtype, pd.CategoricalDtype) or pd.api.types.is_object_dtype(Bin_Data[col]):
                     # Group categorical columns into specified number of bins
                     Bin_Data[col], category_groups = self._bin_categorical_column(Bin_Data[col], bins)
                     self.binned_columns['category_grouped'].append(col)
@@ -90,7 +90,7 @@ class DataBinner:
                     print(f"Failed to bin integer column '{col}': {e}")
                 elif pd.api.types.is_float_dtype(Bin_Data[col]):
                     print(f"Failed to bin float column '{col}': {e}")
-                elif pd.api.types.is_categorical_dtype(Bin_Data[col]) or pd.api.types.is_object_dtype(Bin_Data[col]):
+                elif isinstance(Bin_Data[col].dtype, pd.CategoricalDtype) or pd.api.types.is_object_dtype(Bin_Data[col]):
                     print(f"Failed to bin category column '{col}': {e}")
                 else:
                     print(f"Failed to bin column '{col}': {e}")
@@ -197,7 +197,7 @@ class DataBinner:
             Returns:
                 Tuple[pd.Series, List[str]]: The binned categorical column and list of combined category names.
         """
-        if not pd.api.types.is_categorical_dtype(series):
+        if not (series) == 'category':
             series = series.astype('category')
 
         category_counts = series.value_counts().sort_values(ascending=False)

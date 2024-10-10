@@ -112,7 +112,7 @@ def binning_summary(binned_df, binned_columns, bin_dict):
 
 
 
-def perform_association_rule_mining(original_df, binned_df, selected_columns):
+def perform_association_rule_mining(original_df, binned_df, selected_columns, min_support=0.05, min_threshold=0.05):
     """Perform association rule mining on the selected columns of the original and binned DataFrames."""
     original_df = original_df.copy()
     binned_df = binned_df.copy()
@@ -133,9 +133,7 @@ def perform_association_rule_mining(original_df, binned_df, selected_columns):
             return
 
         assessor = DataIntegrityAssessor(original_df_filtered, binned_df_filtered)
-
-        # Generate association rules
-        association_report, original_rules, binned_rules = assessor.generate_association_rules()
+        association_report, original_rules, binned_rules = assessor.generate_association_rules(min_support, min_threshold)
 
         # Check if rules were generated
         if association_report.empty:
