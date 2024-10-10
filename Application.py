@@ -12,18 +12,17 @@ from src.utils import (
     get_binning_configuration,
     download_binned_data,
     perform_binning,
-    perform_integrity_assessment,  # Refactored to return data
+    perform_integrity_assessment,
     perform_association_rule_mining,
     perform_unique_identification_analysis,
     plot_density_plots_streamlit,
     binning_summary,
     compare_correlations,
     plot_distributions,
-    compare_correlations,
-    plot_distributions,
     save_dataframe,
     initialize_session_state,
-    update_session_state
+    update_session_state,
+    help_info  
 )
 from src.config import (
     PROCESSED_DATA_DIR,
@@ -80,22 +79,35 @@ def sidebar_inputs():
     """Render the sidebar with file upload, settings, binning options, and info."""
     with st.sidebar:
         st.header("📂 Upload & Settings")
-        uploaded_file = st.file_uploader("📤 Upload your dataset", type=['csv', 'pkl'])
-        output_file_type = st.selectbox('📁 Select Output File Type', ['csv', 'pkl'], index=0)
+        uploaded_file = st.file_uploader("📤 Upload your dataset", type=['csv', 'pkl'], help=help_info['sidebar_inputs']['uploaded_file'])
+        
+        output_file_type = st.selectbox(
+            '📁 Select Output File Type', 
+            ['csv', 'pkl'], 
+            index=0, 
+            help=help_info['sidebar_inputs']['output_file_type']
+        )
         st.markdown("---")
-
 
         st.header("⚙️ Binning Options")
-        binning_method = st.selectbox('🔧 Select Binning Method', ['Quantile', 'Equal Width'])
+        binning_method = st.selectbox(
+            '🔧 Select Binning Method', 
+            ['Quantile', 'Equal Width'],
+            help=help_info['sidebar_inputs']['binning_method']
+        )
         if binning_method == 'Equal Width':
-            st.warning("⚠️ **Note:** Using Equal Width will drastically affect the distribution of your data. (Large integrity loss)")  
+            st.warning("⚠️ **Note:** Using Equal Width will drastically affect the distribution of your data. (Large integrity loss)")
 
         st.header("ℹ️ About")
-        st.info("""This application allows you to ... (updates will be added upon completion)""")
-        
+        st.info(help_info['about_application'])
+
         st.markdown("---")
 
-        st.session_state.show_logs = st.checkbox("🖥️ Show Logs in Interface", value=False, help="Display application logs within the app interface.")
+        st.session_state.show_logs = st.checkbox(
+            "🖥️ Show Logs in Interface", 
+            value=False, 
+            help="Display application logs within the app interface."
+        )
         
         # ============================
         # Special Section: Session State Info
@@ -126,6 +138,7 @@ def sidebar_inputs():
             st.dataframe(df_session_info)
 
     return uploaded_file, output_file_type, binning_method
+
 
 # =====================================
 # Data Loading and Saving
@@ -178,7 +191,6 @@ def run_processing_cached(
         st.error(f"Error during data processing: {e}")
         st.stop()
 
-
 def load_and_preview_data(uploaded_file, input_file_type):
     """Load the uploaded data and display a preview."""
     try:
@@ -211,7 +223,6 @@ def save_raw_data(Data, output_file_type):
         st.stop()
     return mapped_save_type, data_path
 
-
 # =====================================
 # Binning Tab Functionality
 # =====================================
@@ -231,10 +242,10 @@ def binning_tab():
         'Select columns to bin',
         options=available_columns,
         default=st.session_state.Binning_Selected_Columns,
-        key='binning_columns_form'
+        key='binning_columns_form',
+        help=help_info['binning_tab']['selected_columns_binning']
     )
     update_session_state('Binning_Selected_Columns', selected_columns_binning)
-
 
     bins = None
     # Button to start binning
@@ -242,12 +253,15 @@ def binning_tab():
     if selected_columns_binning:
         bins = get_binning_configuration(original_data, selected_columns_binning)
     else:
-        st.info("🔄 **Please select at least one column to bin.**")
-    
-    
+        st.info(help_info['binning_tab']['select_columns_binning'])
+
     # Button to process binning
     st.markdown("---")
-    switch_state = st.checkbox('Start Dynamic Binning', key='binning_switch')
+    switch_state = st.checkbox(
+        'Start Dynamic Binning', 
+        key='binning_switch', 
+        help=help_info['binning_tab']['start_dynamic_binning']
+    )
 
     if bins and selected_columns_binning and switch_state:
         try:
@@ -264,7 +278,6 @@ def binning_tab():
             
 
             if st.button("📄 Run Integrity Report"):
-
                 # Assess data integrity post-binning
                 report, overall_loss, entropy_fig = perform_integrity_assessment(
                     OG_Data_BinTab,
@@ -291,8 +304,8 @@ def binning_tab():
 
             # Add association rule mining parameters
             with st.expander("🔍 Association Rule Mining Settings"):
-                min_support = st.slider("Minimum Support", 0.01, 1.0, 0.05, 0.01)
-                min_threshold = st.slider("Minimum Confidence Threshold", 0.01, 1.0, 0.05, 0.01)
+                min_support = st.slider("Minimum Support", 0.01, 1.0, 0.05, 0.01, help=help_info['binning_tab']['min_support'])
+                min_threshold = st.slider("Minimum Confidence Threshold", 0.01, 1.0, 0.05, 0.01, help=help_info['binning_tab']['min_threshold'])
             # **Add a button to run Association Rule Mining**
             if st.button("🔍 Run Association Rule Mining"):
                 try:
@@ -348,7 +361,10 @@ def location_granulariser_tab():
         st.info("No geographical columns available for geocoding.")
         return  # Exit the function early
 
-    preprocess_button = st.button("📂 Start Geocoding")
+    preprocess_button = st.button(
+        "📂 Start Geocoding", 
+        help=help_info['location_granulariser_tab']['start_geocoding']
+    )
     if preprocess_button:
         perform_geocoding_process(selected_geo_columns, geocoded_data)
 
@@ -359,9 +375,12 @@ def location_granulariser_tab():
     granularity = st.selectbox(
         "Select Location Granularity",
         options=granularity_options,
-        help="Choose the level of granularity for location identification."
+        help=help_info['location_granulariser_tab']['granularity']
     )
-    generate_granular_button = st.button("📈 Generate Granular Location Column")
+    generate_granular_button = st.button(
+        "📈 Generate Granular Location Column",
+        help=help_info['location_granulariser_tab']['generate_granular_location']
+    )
     if generate_granular_button:
         perform_granular_location_generation(granularity, selected_geo_columns)
         update_session_state('Location_Selected_Columns', selected_geo_columns.copy())
@@ -384,11 +403,10 @@ def setup_geocoding_options_ui(geocoded_data: pd.DataFrame) -> list:
     selected_geo_column = st.selectbox(
         "Select a column to geocode",
         options=detected_geo_columns,
-        help="Choose the column containing location data to geocode."
+        help=help_info['location_granulariser_tab']['selected_geo_column']
     )
 
     return [selected_geo_column]  # Return as a list for consistency
-
 
 def perform_geocoding_process(selected_geo_columns, geocoded_data):
     """Perform geocoding on the selected columns."""
@@ -500,7 +518,7 @@ def map_section():
         st.write(map_data.dtypes)
         
         # Load Map Button
-        load_map_button = st.button("🗺️ Load Map")
+        load_map_button = st.button("🗺️ Load Map", help=help_info['location_granulariser_tab']['load_map_button'])
         
         if load_map_button:
             # Ensure 'lat' and 'lon' are float
@@ -537,7 +555,7 @@ def unique_identification_analysis_tab():
         selected_columns_uniquetab = granular_columns
     else:
         selected_columns_uniquetab = None
-        st.info("👉 **Please use the Binning and/or Location Granulariser tabs to select columns for analysis.**")
+        st.info(help_info['unique_identification_analysis_tab']['use_bins_location'])
 
     if selected_columns_uniquetab:
         columns_and_info = pd.DataFrame(selected_columns_uniquetab, columns=['Selected Columns'])
@@ -557,7 +575,7 @@ def unique_identification_analysis_tab():
 
         if not selected_columns_uniquetab:
             st.warning("⚠️ **No columns selected in Binning or Location Granulariser tabs for analysis.**")
-            st.info("🔄 **Please select columns in the Binning tab and/or generate granular location data to perform Unique Identification Analysis.**")
+            st.info(help_info['unique_identification_analysis_tab']['select_columns_unique_analysis'])
         else:
             # Verify that selected_columns_uniquetab exist in both ORIGINAL_DATA and GLOBAL_DATA
             existing_columns = [col for col in selected_columns_uniquetab if col in st.session_state.GLOBAL_DATA.columns and col in st.session_state.ORIGINAL_DATA.columns]
@@ -642,9 +660,23 @@ def unique_identification_section_ui(selected_columns_uniquetab):
         col_count = len(selected_columns_uniquetab)
         col1, col2 = st.columns(2)
         with col1:
-            min_comb_size = st.number_input('Minimum Combination Size', min_value=1, max_value=col_count, value=1, step=1)
+            min_comb_size = st.number_input(
+                'Minimum Combination Size', 
+                min_value=1, 
+                max_value=col_count, 
+                value=1, 
+                step=1,
+                help=help_info['unique_identification_analysis_tab']['min_comb_size']
+            )
         with col2:
-            max_comb_size = st.number_input('Maximum Combination Size', min_value=min_comb_size, max_value=col_count, value=col_count, step=1)
+            max_comb_size = st.number_input(
+                'Maximum Combination Size', 
+                min_value=min_comb_size, 
+                max_value=col_count, 
+                value=col_count, 
+                step=1,
+                help=help_info['unique_identification_analysis_tab']['max_comb_size']
+            )
 
         if max_comb_size > 5:
             st.warning("⚠️  **Note:** Combinations larger than 5 may take a long time to compute depending on bin count.")
@@ -675,7 +707,11 @@ def data_anonymization_tab():
 
     # Select Anonymization Method
     anonymization_methods = ['k-anonymity', 'l-diversity', 't-closeness']
-    selected_method = st.selectbox("🔧 Select Anonymization Method", options=anonymization_methods)
+    selected_method = st.selectbox(
+        "🔧 Select Anonymization Method", 
+        options=anonymization_methods,
+        help=help_info['data_anonymization_tab']['anonymization_method']
+    )
 
     # Select Quasi-Identifiers
     st.subheader("🔍 Select Quasi-Identifier Columns")
@@ -683,7 +719,7 @@ def data_anonymization_tab():
         "Select columns to generalize (Quasi-Identifiers)",
         options=original_data.columns.tolist(),
         default=[],
-        help="Quasi-identifiers are columns that can potentially identify individuals."
+        help=help_info['data_anonymization_tab']['quasi_identifiers']
     )
 
     # Select Sensitive Attribute (if needed)
@@ -693,7 +729,7 @@ def data_anonymization_tab():
         sensitive_attribute = st.selectbox(
             "Select the sensitive attribute column",
             options=[col for col in original_data.columns if col not in quasi_identifiers],
-            help="Sensitive attribute is the column that contains sensitive information."
+            help=help_info['data_anonymization_tab']['sensitive_attribute']
         )
 
         if sensitive_attribute in quasi_identifiers:
@@ -715,7 +751,7 @@ def data_anonymization_tab():
         max_value=300,
         value=10,
         step=1,
-        help="Maximum number of generalization iterations during anonymization."
+        help=help_info['data_anonymization_tab']['max_iterations']
     )
 
     if selected_method == 'k-anonymity':
@@ -726,7 +762,7 @@ def data_anonymization_tab():
             max_value=original_data.shape[0],
             value=2,
             step=1,
-            help="k value determines the level of anonymity."
+            help=help_info['data_anonymization_tab']['k_value']
         )
         st.markdown(f"**Selected k-value:** {k_value}")
         l_value = None
@@ -739,7 +775,7 @@ def data_anonymization_tab():
             max_value=original_data.shape[0],
             value=2,
             step=1,
-            help="l value determines the level of diversity."
+            help=help_info['data_anonymization_tab']['l_value']
         )
         st.markdown(f"**Selected l-value:** {l_value}")
         k_value = None
@@ -752,7 +788,7 @@ def data_anonymization_tab():
             max_value=1.0,
             value=0.2,
             step=0.01,
-            help="t value determines the closeness of distribution."
+            help=help_info['data_anonymization_tab']['t_value']
         )
         st.markdown(f"**Selected t-value:** {t_value}")
         k_value = None
@@ -844,15 +880,12 @@ def data_anonymization_tab():
             st.error(f"❌ An error occurred during anonymization: {e}")
             st.error(traceback.format_exc())
 
-
 # =====================================
 # Synthetic Data Generation Tab Functionality
 # =====================================
 
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import logging
 import traceback
 
@@ -881,7 +914,8 @@ def synthetic_data_generation_tab():
         "Select columns to include in synthetic data generation:",
         options=original_data.columns.tolist(),
         default=original_data.columns.tolist(),
-        key="selected_columns"
+        key="selected_columns",
+        help=help_info['synthetic_data_generation_tab']['selected_columns']
     )
 
     if not selected_columns:
@@ -910,7 +944,8 @@ def synthetic_data_generation_tab():
             "Select Datetime Columns:",
             options=selected_columns,
             default=inferred_datetime_columns,
-            key="datetime_columns"
+            key="datetime_columns",
+            help=help_info['synthetic_data_generation_tab']['select_datetime_columns']
         )
 
         # Multiselect for categorical columns
@@ -918,7 +953,8 @@ def synthetic_data_generation_tab():
             "Select Categorical Columns:",
             options=[col for col in selected_columns if col not in datetime_columns],
             default=inferred_categorical_columns,
-            key="categorical_columns"
+            key="categorical_columns",
+            help=help_info['synthetic_data_generation_tab']['select_categorical_columns']
         )
 
         # Multiselect for numerical columns
@@ -926,7 +962,8 @@ def synthetic_data_generation_tab():
             "Select Numerical Columns:",
             options=[col for col in selected_columns if col not in datetime_columns],
             default=inferred_numerical_columns,
-            key="numerical_columns"
+            key="numerical_columns",
+            help=help_info['synthetic_data_generation_tab']['select_numerical_columns']
         )
 
         # Ensure all selected columns are assigned to a category
@@ -949,7 +986,8 @@ def synthetic_data_generation_tab():
             'Mode Imputation',
             'Fill with Specific Value'
         ],
-        key="missing_value_strategy"
+        key="missing_value_strategy",
+        help=help_info['synthetic_data_generation_tab']['missing_value_strategy']
     )
     if missing_value_strategy == 'Fill with Specific Value':
         missing_fill_value = st.text_input("Specify the value to fill missing values with:", value="", key="missing_fill_value")
@@ -972,14 +1010,31 @@ def synthetic_data_generation_tab():
         "Choose a method:",
         options=['CTGAN', 'Gaussian Copula'],
         index=0,
-        key="method_selection"
+        key="method_selection",
+        help=help_info['synthetic_data_generation_tab']['method']
     )
 
     # Input model parameters
     st.subheader("⚙️ Set Model Parameters")
     if method.lower() == 'ctgan':
-        epochs = st.number_input("Number of Epochs:", min_value=1, max_value=100000, value=300, step=1, key="epochs_input")
-        batch_size = st.number_input("Batch Size:", min_value=1, max_value=10000, value=500, step=1, key="batch_size_input")
+        epochs = st.number_input(
+            "Number of Epochs:", 
+            min_value=1, 
+            max_value=100000, 
+            value=300, 
+            step=1, 
+            key="epochs_input",
+            help=help_info['synthetic_data_generation_tab']['ctgan_epochs']
+        )
+        batch_size = st.number_input(
+            "Batch Size:", 
+            min_value=1, 
+            max_value=10000, 
+            value=500, 
+            step=1, 
+            key="batch_size_input",
+            help=help_info['synthetic_data_generation_tab']['ctgan_batch_size']
+        )
         model_params = {
             'epochs': epochs,
             'batch_size': batch_size,
@@ -988,7 +1043,6 @@ def synthetic_data_generation_tab():
     else:
         model_params = {}  # No parameters for Gaussian Copula
     
-
     # Input number of synthetic samples to generate
     num_samples = st.number_input(
         "Number of Synthetic Samples to Generate:",
@@ -996,11 +1050,12 @@ def synthetic_data_generation_tab():
         max_value=200000,
         value=1000,
         step=1,
-        key="num_samples_input"
+        key="num_samples_input",
+        help=help_info['synthetic_data_generation_tab']['num_samples']
     )
 
     # Button to start synthetic data generation
-    if st.button("🚀 Generate Synthetic Data", key="generate_button"):
+    if st.button("🚀 Generate Synthetic Data", key="generate_button", help=help_info['synthetic_data_generation_tab']['generate_synthetic_data']):
         try:
             with st.spinner("Training the model and generating synthetic data..."):
                 # Initialize the generator
@@ -1055,7 +1110,8 @@ def synthetic_data_generation_tab():
         column_to_compare = st.selectbox(
             "Select a column to compare distributions:",
             options=plot_columns,
-            key="column_to_compare"
+            key="column_to_compare",
+            help=help_info['synthetic_data_generation_tab']['compare_distributions']
         )
         if column_to_compare:
             try:
@@ -1067,21 +1123,50 @@ def synthetic_data_generation_tab():
 
 def data_processing_settings():
     with st.expander("🔧 Advanced Data Processing Settings"):
-        st.session_state.date_threshold = st.slider("Date Detection Threshold", 0.0, 1.0, st.session_state.get('date_threshold', 0.0), 0.05)
-        st.session_state.numeric_threshold = st.slider("Numeric Detection Threshold", 0.0, 1.0, st.session_state.get('numeric_threshold', 0.0), 0.05)
-        st.session_state.factor_threshold_ratio = st.slider("Factor Threshold Ratio", 0.0, 1.0, st.session_state.get('factor_threshold_ratio', 0.0), 0.05)
-        st.session_state.factor_threshold_unique = st.number_input("Factor Threshold Unique", 
-                                                                   min_value=10, 
-                                                                   max_value=10000, 
-                                                                   value=st.session_state.get('factor_threshold_unique', 10), 
-                                                                   step=10
-                                                                   )
-        st.session_state.dayfirst = st.checkbox("Day First in Dates", value=st.session_state.get('dayfirst', False))
-        st.session_state.convert_factors_to_int = st.checkbox("Convert Factors to Integers", value=st.session_state.get('convert_factors_to_int', False))
-        st.session_state.date_format = st.text_input("Date Format (e.g., '%Y-%m-%d')", value=st.session_state.get('date_format', ''),
-                                                     help="Leave blank to retain datetime dtype"
-                                                     )
-
+        st.session_state.date_threshold = st.slider(
+            "Date Detection Threshold", 
+            0.0, 1.0, 
+            st.session_state.get('date_threshold', 0.0), 
+            0.05, 
+            help=help_info['data_processing_settings']['date_detection_threshold']
+        )
+        st.session_state.numeric_threshold = st.slider(
+            "Numeric Detection Threshold", 
+            0.0, 1.0, 
+            st.session_state.get('numeric_threshold', 0.0), 
+            0.05, 
+            help=help_info['data_processing_settings']['numeric_detection_threshold']
+        )
+        st.session_state.factor_threshold_ratio = st.slider(
+            "Factor Threshold Ratio", 
+            0.0, 1.0, 
+            st.session_state.get('factor_threshold_ratio', 0.0), 
+            0.05, 
+            help=help_info['data_processing_settings']['factor_threshold_ratio']
+        )
+        st.session_state.factor_threshold_unique = st.number_input(
+            "Factor Threshold Unique", 
+            min_value=10, 
+            max_value=10000, 
+            value=st.session_state.get('factor_threshold_unique', 10), 
+            step=10,
+            help=help_info['data_processing_settings']['factor_threshold_unique']
+        )
+        st.session_state.dayfirst = st.checkbox(
+            "Day First in Dates", 
+            value=st.session_state.get('dayfirst', False),
+            help=help_info['data_processing_settings']['day_first']
+        )
+        st.session_state.convert_factors_to_int = st.checkbox(
+            "Convert Factors to Integers", 
+            value=st.session_state.get('convert_factors_to_int', False),
+            help=help_info['data_processing_settings']['convert_factors_to_int']
+        )
+        st.session_state.date_format = st.text_input(
+            "Date Format (e.g., '%Y-%m-%d')", 
+            value=st.session_state.get('date_format', ''),
+            help=help_info['data_processing_settings']['date_format']
+        )
 
 # =====================================
 # Help Tab
@@ -1089,7 +1174,7 @@ def data_processing_settings():
 
 def help_tab():
     st.header("❓ Help & Documentation")
-    st.markdown("""
+    st.markdown("""    
         ### How to Use This Application
         
         1. **Upload Data:** Start by uploading your dataset in CSV or Pickle format.
@@ -1112,7 +1197,6 @@ def help_tab():
         - **Validate Results:** Use the evaluation metrics provided to assess the quality of anonymization and synthetic data.
         - **Consult Documentation:** Refer to the README documentation for detailed explanations of methods and parameters.
     """)
-
 
 # =====================================
 # Main Function
@@ -1249,7 +1333,6 @@ def main():
     ######################
     with tabs[-1]:
         help_tab()
-
 
 # =====================================
 # Entry Point
