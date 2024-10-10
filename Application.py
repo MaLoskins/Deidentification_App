@@ -276,6 +276,7 @@ def binning_tab():
             # Align both DataFrames (original and binned) to have the same columns
             OG_Data_BinTab, Data_BinTab = align_dataframes(original_data, binned_df)
             
+            st.write("---")
 
             if st.button("📄 Run Integrity Report"):
                 # Assess data integrity post-binning
@@ -301,7 +302,7 @@ def binning_tab():
                         
                         # Display entropy plot
                         st.pyplot(entropy_fig)
-
+            st.write("---")
             # Add association rule mining parameters
             with st.expander("🔍 Association Rule Mining Settings"):
                 min_support = st.slider("Minimum Support", 0.01, 1.0, 0.05, 0.01, help=help_info['binning_tab']['min_support'])
@@ -319,7 +320,7 @@ def binning_tab():
                     st.success("✅ Association Rule Mining completed successfully!")
                 except Exception as e:
                     st.error(f"Error during Association Rule Mining: {e}")
-            
+            st.write("---")   
             # Optionally, if you also want to control the density plots with a button:
             if st.button("📈 Plot Density Plots"):
                 try:
@@ -335,6 +336,7 @@ def binning_tab():
             # Mark binning as completed
             update_session_state('is_binning_done', True)
 
+            st.write("---")
             # Provide option to download the binned data
             download_binned_data(Data_BinTab, Data_BinTab[selected_columns_binning])
 

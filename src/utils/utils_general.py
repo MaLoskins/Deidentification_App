@@ -158,7 +158,8 @@ help_info = {
         "anonymization_method": "Select the method for data anonymization: k-anonymity, l-diversity, or t-closeness.",
         "quasi_identifiers": "Choose the columns to generalize for anonymity. These are the quasi-identifiers.",
         "sensitive_attribute": "Select a sensitive attribute to protect during the anonymization process (if applicable).",
-        "max_iterations": "Set the maximum number of iterations for the anonymization process. This controls the complexity of generalization."
+        "max_iterations": "Set the maximum number of iterations for the anonymization process. This controls the complexity of generalization.",
+        "k_value": "Specify the k-value for k-anonymity. This is the minimum number of similar records required for anonymity.",
     },
     "synthetic_data_generation_tab": {
         "selected_columns": "Choose which columns from the original dataset will be included in the synthetic data generation.",
@@ -168,7 +169,10 @@ help_info = {
         "ctgan_epochs": "Set the number of epochs for training the CTGAN model.",
         "ctgan_batch_size": "Specify the batch size for training the CTGAN model.",
         "generate_synthetic_data": "Click to start the synthetic data generation process.",
-        "compare_distributions": "Select a column to compare the distribution of synthetic data against the original data."
+        "compare_distributions": "Select a column to compare the distribution of synthetic data against the original data.",
+        "select_datetime_columns": "Choose columns that contain datetime data for synthetic data generation.",
+        "select_categorical_columns": "Choose columns that contain categorical data for synthetic data generation.",
+        "select_numerical_columns": "Choose columns that contain numerical data for synthetic data generation."
     },
     "data_processing_settings": {
         "date_detection_threshold": "Set the threshold for date detection in the dataset.",
