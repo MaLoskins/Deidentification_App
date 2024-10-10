@@ -160,6 +160,8 @@ help_info = {
         "sensitive_attribute": "Select a sensitive attribute to protect during the anonymization process (if applicable).",
         "max_iterations": "Set the maximum number of iterations for the anonymization process. This controls the complexity of generalization.",
         "k_value": "Specify the k-value for k-anonymity. This is the minimum number of similar records required for anonymity.",
+        "l_value": "Specify the l-value for l-diversity. This is the minimum number of unique sensitive values in each group.",
+        "t_value": "Specify the t-value for t-closeness. This is the maximum allowed difference in distribution between the original and anonymized data.",
     },
     "synthetic_data_generation_tab": {
         "selected_columns": "Choose which columns from the original dataset will be included in the synthetic data generation.",
