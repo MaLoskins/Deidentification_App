@@ -378,3 +378,55 @@ def compare_correlations(original_df, synthetic_df, categorical_columns):
         st.error(f"Error comparing correlations: {e}")
         st.error(traceback.format_exc())
 
+
+import matplotlib.pyplot as plt
+import pandas as pd
+from typing import List
+
+def plot_fitness_history(fitness_history: List[float], title: str) -> plt.Figure:
+    """Plots the fitness over iterations."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(fitness_history, marker='o', linestyle='-')
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Fitness (Lower is Better)")
+    ax.set_title(title)
+    ax.grid(True)
+    return fig
+
+def plot_time_taken(times: List[float], title: str) -> plt.Figure:
+    """Plots the time taken per iteration."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(times, marker='o', color='orange', linestyle='-')
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Time Taken (seconds)")
+    ax.set_title(title)
+    ax.grid(True)
+    return fig
+
+def plot_comparative_distributions(original_df: pd.DataFrame, binned_df: pd.DataFrame, columns: List[str]) -> plt.Figure:
+    """Plots comparative distributions between original and binned data."""
+    num_columns = len(columns)
+    fig, axes = plt.subplots(num_columns, 2, figsize=(15, 5 * num_columns))
+
+    if num_columns == 1:
+        axes = [axes]
+
+    for idx, col in enumerate(columns):
+        # Original data histogram
+        ax_orig = axes[idx][0]
+        ax_orig.hist(original_df[col].dropna(), bins=30, color='blue', alpha=0.7)
+        ax_orig.set_title(f"Original Data - {col}")
+        ax_orig.set_xlabel(col)
+        ax_orig.set_ylabel("Frequency")
+
+        # Binned data bar chart
+        ax_binned = axes[idx][1]
+        binned_counts = binned_df[col].value_counts().sort_index()
+        ax_binned.bar(binned_counts.index.astype(str), binned_counts.values, color='green', alpha=0.7)
+        ax_binned.set_title(f"Binned Data - {col}")
+        ax_binned.set_xlabel("Bins")
+        ax_binned.set_ylabel("Frequency")
+        plt.setp(ax_binned.get_xticklabels(), rotation=45, ha='right')
+
+    plt.tight_layout()
+    return fig

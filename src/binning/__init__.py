@@ -3,4 +3,5 @@
 from .data_binner import DataBinner
 from .data_integrity_assessor import DataIntegrityAssessor
 from .unique_bin_identifier import UniqueBinIdentifier
+from .unique_bin_identifier_Iterator import UniqueBinIdentifierIterator
 

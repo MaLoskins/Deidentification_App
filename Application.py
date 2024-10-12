@@ -692,10 +692,29 @@ def unique_identification_section_ui(selected_columns_uniquetab):
 # Data Anonymization Tab Functionality
 # =====================================
 
+# Add necessary imports at the top of your application.py
+import traceback
+from src.binning_optimizer import BinningOptimizer
+from src.utils import (
+    save_dataframe,
+    download_binned_data,  # If you have a utility for downloading, else use Streamlit's download_button
+    plot_fitness_history,
+    plot_time_taken,
+    plot_comparative_distributions
+)
+import matplotlib.pyplot as plt
+import io
+import pandas as pd
+import streamlit as st
+
+# =====================================
+# Data Anonymization Tab Functionality
+# =====================================
+
 def data_anonymization_tab():
     """Render the Data Anonymization Tab in the Streamlit app."""
     st.header("🔐 Data Anonymization")
-
+    
     # Check if ORIGINAL_DATA is available
     if 'ORIGINAL_DATA' not in st.session_state or st.session_state.ORIGINAL_DATA.empty:
         st.warning("⚠️ **No original data available. Please upload a dataset first.**")
@@ -703,184 +722,252 @@ def data_anonymization_tab():
 
     original_data = st.session_state.ORIGINAL_DATA.copy()
 
-    # Display a sample of the original data
-    st.subheader("📋 Original Data Sample")
-    st.dataframe(original_data.head())
+    st.subheader("⚙️ Binning Optimizer")
 
-    # Select Anonymization Method
-    anonymization_methods = ['k-anonymity', 'l-diversity', 't-closeness']
-    selected_method = st.selectbox(
-        "🔧 Select Anonymization Method", 
-        options=anonymization_methods,
-        help=help_info['data_anonymization_tab']['anonymization_method']
+    # Select Privacy Model
+    privacy_model = st.selectbox(
+        "Select Privacy Model",
+        options=["k-anonymity", "l-diversity", "t-closeness"],
+        help="Choose the privacy model to enforce during binning."
     )
 
-    # Select Quasi-Identifiers
-    st.subheader("🔍 Select Quasi-Identifier Columns")
-    quasi_identifiers = st.multiselect(
-        "Select columns to generalize (Quasi-Identifiers)",
-        options=original_data.columns.tolist(),
-        default=[],
-        help=help_info['data_anonymization_tab']['quasi_identifiers']
-    )
+    # Initialize parameters based on privacy model
+    with st.expander("🔧 Configure Parameters", expanded=True):
+        st.markdown("### 🛠️ Configure Privacy Model Parameters")
 
-    # Select Sensitive Attribute (if needed)
-    sensitive_attribute = None
-    if selected_method in ['l-diversity', 't-closeness']:
-        st.subheader("🔑 Select Sensitive Attribute")
-        sensitive_attribute = st.selectbox(
-            "Select the sensitive attribute column",
-            options=[col for col in original_data.columns if col not in quasi_identifiers],
-            help=help_info['data_anonymization_tab']['sensitive_attribute']
-        )
-
-        if sensitive_attribute in quasi_identifiers:
-            st.warning("⚠️ The sensitive attribute should not be among the quasi-identifiers.")
-            # Remove it from quasi_identifiers
-            quasi_identifiers = [qi for qi in quasi_identifiers if qi != sensitive_attribute]
-
-    if not quasi_identifiers:
-        st.info("Please select at least one quasi-identifier to configure generalization parameters.")
-        return
-
-    # Input Parameters with Sliders and SelectBoxes
-    st.subheader("⚙️ Set Anonymization Parameters")
-
-    # Max iterations slider
-    max_iterations = st.slider(
-        "Set the maximum number of iterations",
-        min_value=1,
-        max_value=300,
-        value=10,
-        step=1,
-        help=help_info['data_anonymization_tab']['max_iterations']
-    )
-
-    if selected_method == 'k-anonymity':
-        # k-value slider
-        k_value = st.slider(
-            "Set the value of k (for k-anonymity)",
-            min_value=2,
-            max_value=original_data.shape[0],
-            value=2,
-            step=1,
-            help=help_info['data_anonymization_tab']['k_value']
-        )
-        st.markdown(f"**Selected k-value:** {k_value}")
-        l_value = None
-        t_value = None
-    elif selected_method == 'l-diversity':
-        # l-value slider for l-diversity
-        l_value = st.slider(
-            "Set the value of l (for l-diversity)",
+        # Common parameter: k-anonymity level
+        k = st.number_input(
+            "k (k-anonymity level)",
             min_value=1,
-            max_value=original_data.shape[0],
             value=2,
             step=1,
-            help=help_info['data_anonymization_tab']['l_value']
+            help="Desired k-anonymity level."
         )
-        st.markdown(f"**Selected l-value:** {l_value}")
-        k_value = None
-        t_value = None
-    elif selected_method == 't-closeness':
-        # t-value slider for t-closeness
-        t_value = st.slider(
-            "Set the value of t (for t-closeness)",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.2,
-            step=0.01,
-            help=help_info['data_anonymization_tab']['t_value']
+
+        # Initialize variables for l-diversity and t-closeness
+        l = None
+        t = None
+        sensitive_attributes = None
+
+        if privacy_model == "l-diversity":
+            l = st.number_input(
+                "l (l-diversity level)",
+                min_value=1,
+                value=2,
+                step=1,
+                help="Desired l-diversity level."
+            )
+            sensitive_attributes = st.multiselect(
+                "Select Sensitive Attributes",
+                options=original_data.columns.tolist(),
+                help="Columns containing sensitive information."
+            )
+            if not sensitive_attributes:
+                st.warning("⚠️ Please select at least one sensitive attribute for l-diversity.")
+        
+        elif privacy_model == "t-closeness":
+            t = st.number_input(
+                "t (t-closeness threshold)",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.05,
+                step=0.01,
+                help="Desired t-closeness threshold."
+            )
+            sensitive_attributes = st.multiselect(
+                "Select Sensitive Attributes",
+                options=original_data.columns.tolist(),
+                help="Columns containing sensitive information."
+            )
+            if not sensitive_attributes:
+                st.warning("⚠️ Please select at least one sensitive attribute for t-closeness.")
+
+        # Binning Configuration
+        st.markdown("---")
+        st.markdown("### 🔢 Binning Configuration")
+
+        # Select columns to bin
+        columns_to_bin = st.multiselect(
+            "Select Columns to Bin",
+            options=original_data.columns.tolist(),
+            default=original_data.columns.tolist(),
+            help="Columns to include in the binning process."
         )
-        st.markdown(f"**Selected t-value:** {t_value}")
-        k_value = None
-        l_value = None
+        if not columns_to_bin:
+            st.warning("⚠️ Please select at least one column to bin.")
 
-    # Button to perform anonymization
-    if st.button("✅ Apply Anonymization"):
-        try:
-            if not quasi_identifiers:
-                st.error("❌ Please select at least one quasi-identifier column.")
-                return
-            if selected_method in ['l-diversity', 't-closeness'] and not sensitive_attribute:
-                st.error("❌ Please select a sensitive attribute for the chosen anonymization method.")
-                return
-            if sensitive_attribute and sensitive_attribute not in original_data.columns:
-                st.error("❌ Selected sensitive attribute does not exist in the data.")
-                return
-
-            # Initialize DataAnonymizer with debug callback (optional)
-            anonymizer = DataAnonymizer(
-                original_data=original_data,
-                debug_callback=None  # Pass st.write for debugging
-            )
-
-            # Apply anonymization
-            anonymizer.anonymize(
-                method=selected_method,
-                quasi_identifiers=quasi_identifiers,
-                k=k_value if selected_method == 'k-anonymity' else None,
-                l=l_value if selected_method == 'l-diversity' else None,
-                t=t_value if selected_method == 't-closeness' else None,
-                sensitive_attribute=sensitive_attribute,
-                max_iterations=max_iterations  # Pass the max_iterations from the slider
-            )
-
-            # Retrieve anonymized data and report
-            anonymized_data = anonymizer.get_anonymized_data()
-            report = anonymizer.get_report()
-
-            # Display anonymized data
-            st.subheader("🛡️ Anonymized Data Sample")
-            st.dataframe(anonymized_data[quasi_identifiers])
-
-            # Display report
-            st.subheader("📄 Anonymization Report")
-            st.dataframe(report)
-
-            # Provide Download Options
-            st.subheader("💾 Download Anonymized Data and Report")
-            csv_anonymized = anonymized_data.to_csv(index=False).encode('utf-8')
-            csv_report = report.to_csv(index=False).encode('utf-8')
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    label="📥 Download Anonymized Data as CSV",
-                    data=csv_anonymized,
-                    file_name='anonymized_data.csv',
-                    mime='text/csv',
+        # Define minimum and maximum bins per column
+        st.markdown("#### 🔽 Define Minimum and Maximum Bins per Column")
+        min_bins_per_column = {}
+        max_bins_per_column = {}
+        for col in columns_to_bin:
+            col_min_bins, col_max_bins = st.columns(2)
+            with col_min_bins:
+                min_bins = st.number_input(
+                    f"Min Bins for '{col}'",
+                    min_value=1,
+                    max_value=100,
+                    value=3,
+                    step=1,
+                    key=f"min_bins_{col}",
+                    help=f"Minimum number of bins for column '{col}'."
                 )
-            with col2:
-                st.download_button(
-                    label="📥 Download Anonymization Report as CSV",
-                    data=csv_report,
-                    file_name='anonymization_report.csv',
-                    mime='text/csv',
+            with col_max_bins:
+                max_bins = st.number_input(
+                    f"Max Bins for '{col}'",
+                    min_value=min_bins,  # Ensure max_bins >= min_bins
+                    max_value=100,
+                    value=20,
+                    step=1,
+                    key=f"max_bins_{col}",
+                    help=f"Maximum number of bins for column '{col}'."
                 )
+            min_bins_per_column[col] = min_bins
+            max_bins_per_column[col] = max_bins
 
-            # Update Session State with Anonymized Data and Report
-            st.session_state.ANONYMIZED_DATA = anonymized_data
-            st.session_state.ANONYMIZATION_REPORT = report
+        # Select binning method and optimizer
+        st.markdown("---")
+        st.markdown("### 🔧 Select Binning Method and Optimizer")
 
-            # Check if desired anonymity was achieved
-            achieved_anonymity = report.iloc[-1]['Actual_Value']
-            desired_anonymity = k_value or l_value or t_value
+        binning_method = st.selectbox(
+            "Binning Method",
+            options=["quantile", "equal width"],
+            index=0,
+            help="Choose the binning method: Quantile ensures equal-sized bins, while Equal Width divides data into bins of equal range."
+        )
 
-            if selected_method == 't-closeness':
-                if achieved_anonymity > desired_anonymity:
-                    st.warning("⚠️ The desired t-closeness level was not achieved.")
-                else:
-                    st.success("✅ Data anonymization completed successfully!")
-            else:
-                if achieved_anonymity < desired_anonymity:
-                    st.warning("⚠️ The desired anonymity level was not achieved.")
-                else:
-                    st.success("✅ Data anonymization completed successfully!")
+        optimizer = st.selectbox(
+            "Optimization Method",
+            options=["genetic", "simulated_annealing"],
+            index=0,
+            help="Choose the optimization method: Genetic Algorithm or Simulated Annealing."
+        )
 
-        except Exception as e:
-            st.error(f"❌ An error occurred during anonymization: {e}")
-            st.error(traceback.format_exc())
+        # Define maximum combination size with a dynamic default value
+        desired_default = 3
+        max_val = len(columns_to_bin)
+        default_value = desired_default if max_val >= desired_default else max_val
+
+        max_comb_size = st.number_input(
+            "Maximum Combination Size",
+            min_value=1,
+            max_value=max_val,
+            value=default_value,
+            step=1,
+            help="Maximum number of columns to consider in combinations for anonymization."
+        )
+
+    # Run Optimizer Button
+    st.markdown("---")
+    if st.button("🛠️ Optimize Binning"):
+        if not columns_to_bin:
+            st.error("❌ Please select at least one column to bin.")
+        elif privacy_model in ["l-diversity", "t-closeness"] and not sensitive_attributes:
+            st.error("❌ Please select at least one sensitive attribute for the chosen privacy model.")
+        else:
+            progress_bar = st.progress(0)  # Initialize progress bar
+            progress_text = st.empty()      # Placeholder for progress text
+
+            def progress_callback(progress_percentage: int):
+                progress_bar.progress(progress_percentage)
+                progress_text.text(f"Progress: {progress_percentage}%")
+
+            with st.spinner("Running Binning Optimizer..."):
+                try:
+                    # Initialize the BinningOptimizer
+                    binning_optimizer = BinningOptimizer(
+                        original_data=original_data,
+                        k=int(k),
+                        privacy_model=privacy_model.replace('-', '_'),
+                        sensitive_attributes=sensitive_attributes if privacy_model in ["l-diversity", "t-closeness"] else None,
+                        l=int(l) if privacy_model == "l-diversity" else None,
+                        t=float(t) if privacy_model == "t-closeness" else None,
+                        min_comb_size=1,
+                        max_comb_size=int(max_comb_size),
+                        columns=columns_to_bin,
+                        min_bins_per_column=min_bins_per_column,
+                        max_bins_per_column=max_bins_per_column,
+                        max_iterations=1000,
+                        optimizer=optimizer,
+                        method=binning_method
+                    )
+
+                    # Execute the optimization
+                    with st.spinner("Finding the best binning configuration..."):
+                        best_bin_dict, best_binned_df = binning_optimizer.find_best_binned_data()
+
+                    if best_bin_dict and best_binned_df is not None and not best_binned_df.empty:
+                        progress_bar.progress(100)  # Ensure progress bar is complete
+                        progress_text.text("Progress: 100%")
+                        st.success("✅ Binning Optimization Completed Successfully!")
+
+                        # Display Best Binning Configuration
+                        st.markdown("### 🎯 Best Binning Configuration:")
+                        bin_config_df = pd.DataFrame(list(best_bin_dict.items()), columns=["Column", "Number of Bins"])
+                        st.dataframe(bin_config_df)
+
+                        # Display Binned Data Sample
+                        st.markdown("### 📊 Binned Data Sample:")
+                        st.dataframe(best_binned_df.head())
+
+                        # Display Optimization Summary
+                        summary = binning_optimizer.get_optimization_summary()
+                        st.markdown("### 📈 Optimization Summary:")
+                        summary_df = pd.DataFrame(list(summary.items()), columns=["Metric", "Value"])
+                        st.dataframe(summary_df)
+
+                        # Plot Fitness History using utils_plotting.py
+                        st.markdown("### 📉 Fitness Over Iterations:")
+                        fig_fitness = plot_fitness_history(binning_optimizer.fitness_history, title="Fitness Over Iterations")
+                        st.pyplot(fig_fitness)
+
+                        # Plot Time Taken per Iteration using utils_plotting.py
+                        st.markdown("### ⏱️ Time Taken per Iteration:")
+                        fig_time = plot_time_taken(binning_optimizer.times, title="Time Taken per Iteration")
+                        st.pyplot(fig_time)
+
+                        # Plot Comparative Distributions between Original and Binned Data
+                        st.markdown("### 📊 Comparative Distributions:")
+                        comparison_fig = plot_comparative_distributions(original_data, best_binned_df, columns_to_bin)
+                        st.pyplot(comparison_fig)
+
+                        # Option to Download Binned Data
+                        st.markdown("### 💾 Download Results:")
+                        csv_binned = best_binned_df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download Binned Data as CSV",
+                            data=csv_binned,
+                            file_name='binned_data.csv',
+                            mime='text/csv',
+                            key='download_binned_data'
+                        )
+
+                        # Option to Download Binning Configuration
+                        csv_bin_config = bin_config_df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download Binning Configuration as CSV",
+                            data=csv_bin_config,
+                            file_name='binning_configuration.csv',
+                            mime='text/csv',
+                            key='download_binning_config'
+                        )
+
+                        # Optionally, Save Plots (if needed)
+                        # Example: Save fitness plot
+                        # binning_optimizer.plot_fitness_history("Fitness Over Iterations", "fitness_plot.png")
+
+                        # Store the binned data in session state for further use if needed
+                        st.session_state['Binned_Data'] = best_binned_df.copy()
+                        st.session_state['Binning_Configuration'] = best_bin_dict.copy()
+
+                    else:
+                        st.error("❌ Binning Optimization failed to find a suitable configuration.")
+                
+                except Exception as e:
+                    st.error(f"❌ An error occurred during binning optimization: {e}")
+                    st.error(traceback.format_exc())
+
+
 
 # =====================================
 # Synthetic Data Generation Tab Functionality

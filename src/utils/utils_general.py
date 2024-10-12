@@ -140,7 +140,9 @@ help_info = {
         "selected_columns_binning": "Select the columns you wish to bin. This is required to perform manual binning.",
         "start_dynamic_binning": "Check this option to initiate the dynamic binning process.",
         "min_support": "Set the minimum support threshold for association rule mining. This controls the minimum frequency of itemsets.",
-        "min_threshold": "Set the minimum confidence threshold for association rule mining. This determines the minimum confidence level for the rules generated."
+        "min_threshold": "Set the minimum confidence threshold for association rule mining. This determines the minimum confidence level for the rules generated.",
+        "select_columns_binning": "Choose columns to bin. This is required to perform manual binning."
+        
     },
     "location_granulariser_tab": {
         "selected_geo_column": "Choose a column that contains geographical data to perform geocoding.",
@@ -152,7 +154,9 @@ help_info = {
     "unique_identification_analysis_tab": {
         "selected_columns_uniquetab": "Select columns to analyze for unique identification. The analysis reveals potential identifiers in the data.",
         "min_comb_size": "Specify the minimum size for combinations of columns to consider during the uniqueness analysis.",
-        "max_comb_size": "Specify the maximum size for combinations of columns to consider during the uniqueness analysis."
+        "max_comb_size": "Specify the maximum size for combinations of columns to consider during the uniqueness analysis.",
+        "use_bins_location": "Check this option to use the binning configuration from the location granularizer tab.",
+        "select_columns_unique_analysis": "Choose columns to analyze for unique identification."
     },
     "data_anonymization_tab": {
         "anonymization_method": "Select the method for data anonymization: k-anonymity, l-diversity, or t-closeness.",
