@@ -379,8 +379,6 @@ def compare_correlations(original_df, synthetic_df, categorical_columns):
         st.error(traceback.format_exc())
 
 
-import matplotlib.pyplot as plt
-import pandas as pd
 from typing import List
 
 def plot_fitness_history(fitness_history: List[float], title: str) -> plt.Figure:
