@@ -40,3 +40,7 @@ outputs/
 # Ignore extract.py
 extract.py
 FileName_Contents.txt
+
+# In the "Report" directory, ignore all files except pdf files  
+Report/*
+!Report/*.pdf
