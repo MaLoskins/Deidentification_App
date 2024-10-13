@@ -1677,8 +1677,10 @@ def main():
         "📍 Location Data Geocoding Granulariser", 
         "🔍 Unique Identification Analysis",
         "🔐 Data Anonymization",
-        "🧪 Synthetic Data Generation",  # New Tab
-        "❓ Help & Documentation"  # New Tab
+        "🧪 Synthetic Data Generation", 
+        "📝 Manual String Preprocessing",  
+        "❓ Help & Documentation" 
+
     ])
     logger.debug("Tabs created for navigation.")
 
