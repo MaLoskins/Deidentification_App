@@ -275,9 +275,14 @@ def save_raw_data(Data, output_file_type):
 def binning_tab():
     """Render the Binning Tab in the Streamlit app."""
     st.header("📊 Manual Binning")
+    
+    # Initialize session state for Binning_Selected_Columns if not already set
+    if 'Binning_Selected_Columns' not in st.session_state:
+        st.session_state.Binning_Selected_Columns = []
+    
     original_data = st.session_state.ORIGINAL_DATA.copy()
     logger.info("Binning tab accessed.")
-
+    
     # Determine available columns by excluding those selected in Location Granulariser
     available_columns = list(set(original_data.select_dtypes(
         include=['number', 'datetime', 'datetime64[ns, UTC]', 'datetime64[ns]', 'category']
@@ -288,11 +293,12 @@ def binning_tab():
     selected_columns_binning = st.multiselect(
         'Select columns to bin',
         options=available_columns,
-        default=st.session_state.Binning_Selected_Columns,
         key='binning_columns_form',
         help=help_info['binning_tab']['selected_columns_binning']
     )
-    update_session_state('Binning_Selected_Columns', selected_columns_binning)
+    
+    # Update session state without causing interference
+    st.session_state.Binning_Selected_Columns = selected_columns_binning
     logger.debug(f"Selected columns for binning: {selected_columns_binning}")
 
     bins = None
@@ -1530,6 +1536,24 @@ def synthetic_data_generation_tab():
                 logger.error(f"Error in plotting distributions: {e}")
                 logger.error(traceback.format_exc())
 
+
+# =====================================
+# Manual String Preprocessing Tab
+# =====================================
+def manual_string_preprocessing_tab():
+    """Render the Manual String Preprocessing Tab in the Streamlit app."""
+    st.header("📝 Manual String Preprocessing")
+    logger.info("Manual String Preprocessing tab accessed.")
+
+    # Check if ORIGINAL_DATA is available
+    if 'ORIGINAL_DATA' not in st.session_state or st.session_state.ORIGINAL_DATA.empty:
+        st.warning("⚠️ **No original data available. Please upload a dataset first.**")
+        logger.warning("No original data available for Data Anonymization.")
+        return
+
+    original_data = st.session_state.ORIGINAL_DATA.copy()
+    logger.debug("Original data copied for anonymization.")
+
 # =====================================
 # Help Tab
 # =====================================
@@ -1687,6 +1711,12 @@ def main():
     ######################
     with tabs[4]:
         synthetic_data_generation_tab()
+
+    ######################
+    # Manual String Preprocessing Tab
+    ######################
+    with tabs[5]:
+        manual_string_preprocessing_tab()
     
     ######################
     # Help & Documentation Tab
