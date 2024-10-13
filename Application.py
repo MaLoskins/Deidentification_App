@@ -47,6 +47,9 @@ from src.synthetic_data_generator import SyntheticDataGenerator
 # Import Data Processing Class
 from src.data_processing import DataProcessor
 
+# Import Manual String Preprocessing Class
+from src.preprocessing.manual_string_preprocessor import ManualStringPreprocessor
+
 # Import necessary modules for this section
 from src.binning_optimizer import BinningOptimizer
 from src.utils import (
@@ -1552,7 +1555,10 @@ def manual_string_preprocessing_tab():
         return
 
     original_data = st.session_state.ORIGINAL_DATA.copy()
-    logger.debug("Original data copied for anonymization.")
+    logger.debug("Original data copied for manual string preprocessing.")
+
+    preprocessor = ManualStringPreprocessor()
+    preprocessor.run(original_data)
 
 # =====================================
 # Help Tab
