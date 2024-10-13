@@ -40,9 +40,6 @@ from src.location_granularizer import (
     prepare_map_data
 )
 
-# Import DataAnonymizer Class
-from src.data_anonymizer import DataAnonymizer
-
 # Import SyntheticDataGenerator Class
 from src.synthetic_data_generator import SyntheticDataGenerator
 
@@ -693,28 +690,36 @@ def unique_identification_section_ui(selected_columns_uniquetab):
 # =====================================
 
 # Add necessary imports at the top of your application.py
+import os
+import sys  # Add this import if not already present
 import traceback
 from src.binning_optimizer import BinningOptimizer
 from src.utils import (
     save_dataframe,
-    download_binned_data,  # If you have a utility for downloading, else use Streamlit's download_button
     plot_fitness_history,
     plot_time_taken,
     plot_comparative_distributions
 )
 import matplotlib.pyplot as plt
-import io
 import pandas as pd
 import streamlit as st
+import logging
 
-# =====================================
-# Data Anonymization Tab Functionality
-# =====================================
+# Configure the logger
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('application.log', encoding='utf-8')  # Use utf-8 encoding
+    ],
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def data_anonymization_tab():
     """Render the Data Anonymization Tab in the Streamlit app."""
     st.header("🔐 Data Anonymization")
-    
+
     # Check if ORIGINAL_DATA is available
     if 'ORIGINAL_DATA' not in st.session_state or st.session_state.ORIGINAL_DATA.empty:
         st.warning("⚠️ **No original data available. Please upload a dataset first.**")
@@ -743,6 +748,9 @@ def data_anonymization_tab():
             step=1,
             help="Desired k-anonymity level."
         )
+        if k < 1:
+            st.error("❌ 'k' must be at least 1.")
+            return
 
         # Initialize variables for l-diversity and t-closeness
         l = None
@@ -757,6 +765,9 @@ def data_anonymization_tab():
                 step=1,
                 help="Desired l-diversity level."
             )
+            if l < 1:
+                st.error("❌ 'l' must be at least 1.")
+                return
             sensitive_attributes = st.multiselect(
                 "Select Sensitive Attributes",
                 options=original_data.columns.tolist(),
@@ -764,7 +775,7 @@ def data_anonymization_tab():
             )
             if not sensitive_attributes:
                 st.warning("⚠️ Please select at least one sensitive attribute for l-diversity.")
-        
+
         elif privacy_model == "t-closeness":
             t = st.number_input(
                 "t (t-closeness threshold)",
@@ -774,6 +785,9 @@ def data_anonymization_tab():
                 step=0.01,
                 help="Desired t-closeness threshold."
             )
+            if t <= 0 or t > 1:
+                st.error("❌ 't' must be between 0 and 1.")
+                return
             sensitive_attributes = st.multiselect(
                 "Select Sensitive Attributes",
                 options=original_data.columns.tolist(),
@@ -795,6 +809,7 @@ def data_anonymization_tab():
         )
         if not columns_to_bin:
             st.warning("⚠️ Please select at least one column to bin.")
+            return
 
         # Define minimum and maximum bins per column
         st.markdown("#### 🔽 Define Minimum and Maximum Bins per Column")
@@ -843,6 +858,72 @@ def data_anonymization_tab():
             help="Choose the optimization method: Genetic Algorithm or Simulated Annealing."
         )
 
+        st.markdown("### 🛠️ Optimization Hyperparameters")
+
+        # Optimizer-specific hyperparameters
+        if optimizer == "genetic":
+            generations = st.number_input(
+                "Generations",
+                min_value=1,
+                value=100,
+                step=1,
+                help="Number of generations for the Genetic Algorithm."
+            )
+            population_size = st.number_input(
+                "Population Size",
+                min_value=10,
+                value=50,
+                step=1,
+                help="Number of individuals in each generation."
+            )
+            mutation_rate = st.slider(
+                "Mutation Rate",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.1,
+                step=0.01,
+                help="Probability of mutation in the Genetic Algorithm."
+            )
+        elif optimizer == "simulated_annealing":
+            initial_temperature = st.number_input(
+                "Initial Temperature",
+                min_value=0.1,
+                value=1000.0,
+                step=100.0,
+                help="Starting temperature for Simulated Annealing."
+            )
+            cooling_rate = st.slider(
+                "Cooling Rate",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.95,
+                step=0.01,
+                help="Rate at which the temperature decreases."
+            )
+            iterations = st.number_input(
+                "Iterations",
+                min_value=1,
+                value=1000,
+                step=1,
+                help="Number of iterations for Simulated Annealing."
+            )
+            neighbors_per_iteration = st.number_input(
+                "Neighbors per Iteration",
+                min_value=1,
+                value=5,
+                step=1,
+                help="Number of neighbor solutions to evaluate each iteration."
+            )
+
+        # Expose max_iterations to the user
+        max_iterations = st.number_input(
+            "Max Iterations",
+            min_value=1,
+            value=1000,
+            step=1,
+            help="Maximum number of iterations for random sampling or optimization algorithms."
+        )
+
         # Define maximum combination size with a dynamic default value
         desired_default = 3
         max_val = len(columns_to_bin)
@@ -857,6 +938,17 @@ def data_anonymization_tab():
             help="Maximum number of columns to consider in combinations for anonymization."
         )
 
+
+        # Allow user to adjust max_workers
+        max_workers = st.number_input(
+            "Max Workers",
+            min_value=1,
+            max_value=os.cpu_count() or 1,
+            value=min(8, os.cpu_count() or 1),
+            step=1,
+            help="Maximum number of worker threads for parallel processing."
+        )
+
     # Run Optimizer Button
     st.markdown("---")
     if st.button("🛠️ Optimize Binning"):
@@ -867,10 +959,19 @@ def data_anonymization_tab():
         else:
             progress_bar = st.progress(0)  # Initialize progress bar
             progress_text = st.empty()      # Placeholder for progress text
+            optimization_logs = st.expander("📄 Optimization Logs", expanded=False)
+            optimization_logs.markdown("### 📝 Logs:")
+            optimization_log_text = optimization_logs.empty()
 
-            def progress_callback(progress_percentage: int):
+            # Reset previous session state
+            st.session_state['Privacy_Achieved'] = False
+            st.session_state['Optimization_Logs'] = ""
+
+            def progress_callback(progress_percentage: int, log_message: str = ""):
                 progress_bar.progress(progress_percentage)
                 progress_text.text(f"Progress: {progress_percentage}%")
+                if log_message:
+                    optimization_log_text.text(log_message)
 
             with st.spinner("Running Binning Optimizer..."):
                 try:
@@ -887,19 +988,39 @@ def data_anonymization_tab():
                         columns=columns_to_bin,
                         min_bins_per_column=min_bins_per_column,
                         max_bins_per_column=max_bins_per_column,
-                        max_iterations=1000,
+                        max_iterations=int(max_iterations),
                         optimizer=optimizer,
-                        method=binning_method
+                        method=binning_method,
+                        logger=logger,
+                        # Optimizer-specific hyperparameters
+                        generations=int(generations) if optimizer == "genetic" else None,
+                        population_size=int(population_size) if optimizer == "genetic" else None,
+                        mutation_rate=float(mutation_rate) if optimizer == "genetic" else None,
+                        initial_temperature=float(initial_temperature) if optimizer == "simulated_annealing" else None,
+                        cooling_rate=float(cooling_rate) if optimizer == "simulated_annealing" else None,
+                        iterations=int(iterations) if optimizer == "simulated_annealing" else None,
+                        neighbors_per_iteration=int(neighbors_per_iteration) if optimizer == "simulated_annealing" else None,
+                        max_workers=int(max_workers)
                     )
 
                     # Execute the optimization
                     with st.spinner("Finding the best binning configuration..."):
-                        best_bin_dict, best_binned_df = binning_optimizer.find_best_binned_data()
+                        best_bin_dict, best_binned_df = binning_optimizer.find_best_binned_data(progress_callback=progress_callback)
 
                     if best_bin_dict and best_binned_df is not None and not best_binned_df.empty:
                         progress_bar.progress(100)  # Ensure progress bar is complete
                         progress_text.text("Progress: 100%")
                         st.success("✅ Binning Optimization Completed Successfully!")
+
+                        # Perform detailed privacy checks
+                        privacy_achieved, privacy_details = binning_optimizer.check_privacy(best_binned_df)
+                        st.session_state['Privacy_Achieved'] = privacy_achieved
+
+                        # Display Privacy Achievement Status
+                        if privacy_achieved:
+                            st.success("🎉 Desired privacy level was achieved.")
+                        else:
+                            st.error("⚠️ Desired privacy level was NOT achieved.")
 
                         # Display Best Binning Configuration
                         st.markdown("### 🎯 Best Binning Configuration:")
@@ -912,6 +1033,7 @@ def data_anonymization_tab():
 
                         # Display Optimization Summary
                         summary = binning_optimizer.get_optimization_summary()
+                        summary['Privacy Achieved'] = "Yes" if privacy_achieved else "No"
                         st.markdown("### 📈 Optimization Summary:")
                         summary_df = pd.DataFrame(list(summary.items()), columns=["Metric", "Value"])
                         st.dataframe(summary_df)
@@ -930,6 +1052,20 @@ def data_anonymization_tab():
                         st.markdown("### 📊 Comparative Distributions:")
                         comparison_fig = plot_comparative_distributions(original_data, best_binned_df, columns_to_bin)
                         st.pyplot(comparison_fig)
+
+                        # Plot Privacy Compliance Visualizations
+                        if privacy_model == "k-anonymity":
+                            st.markdown("### 🔒 K-Anonymity Compliance:")
+                            fig_k_anonymity = binning_optimizer.plot_k_anonymity_compliance()
+                            st.pyplot(fig_k_anonymity)
+                        elif privacy_model == "l-diversity":
+                            st.markdown("### 🔒 L-Diversity Compliance:")
+                            fig_l_diversity = binning_optimizer.plot_l_diversity_compliance()
+                            st.pyplot(fig_l_diversity)
+                        elif privacy_model == "t-closeness":
+                            st.markdown("### 🔒 T-Closeness Compliance:")
+                            fig_t_closeness = binning_optimizer.plot_t_closeness_compliance()
+                            st.pyplot(fig_t_closeness)
 
                         # Option to Download Binned Data
                         st.markdown("### 💾 Download Results:")
@@ -952,20 +1088,65 @@ def data_anonymization_tab():
                             key='download_binning_config'
                         )
 
-                        # Optionally, Save Plots (if needed)
-                        # Example: Save fitness plot
-                        # binning_optimizer.plot_fitness_history("Fitness Over Iterations", "fitness_plot.png")
+                        # Optionally, Download Privacy Compliance Summary
+                        if privacy_achieved:
+                            privacy_summary = {
+                                "Privacy Achieved": "Yes",
+                                **privacy_details
+                            }
+                        else:
+                            privacy_summary = {
+                                "Privacy Achieved": "No",
+                                **privacy_details
+                            }
+                        privacy_summary_df = pd.DataFrame(list(privacy_summary.items()), columns=["Metric", "Value"])
+                        csv_privacy = privacy_summary_df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download Privacy Compliance Summary as CSV",
+                            data=csv_privacy,
+                            file_name='privacy_compliance_summary.csv',
+                            mime='text/csv',
+                            key='download_privacy_summary'
+                        )
 
-                        # Store the binned data in session state for further use if needed
+                        # Store the binned data and configurations in session state for further use if needed
                         st.session_state['Binned_Data'] = best_binned_df.copy()
                         st.session_state['Binning_Configuration'] = best_bin_dict.copy()
 
+                        # Store privacy details in session state
+                        st.session_state['Privacy_Details'] = privacy_details
+
+                        # Provide Recommendations if Privacy Not Achieved
+                        if not privacy_achieved:
+                            st.markdown("### 🛠️ Recommendations:")
+                            recommendations = binning_optimizer.get_privacy_recommendations()
+                            for rec in recommendations:
+                                st.write(f"- {rec}")
+
+                        # Option to Retry Optimization
+                        if not privacy_achieved:
+                            if st.button("🔄 Retry Optimization"):
+                                # Reset relevant session state variables
+                                st.session_state['Privacy_Achieved'] = False
+                                st.session_state['Optimization_Logs'] = ""
+                                # Re-run the optimizer with the same or adjusted parameters
+                                st.experimental_rerun()
+
+                        # Display Comprehensive Optimization Logs
+                        st.markdown("### 📄 Comprehensive Optimization Logs:")
+                        with st.expander("🔍 View Logs", expanded=False):
+                            st.text_area("Logs", value=binning_optimizer.get_logs(), height=300)
+
                     else:
                         st.error("❌ Binning Optimization failed to find a suitable configuration.")
-                
+                        st.session_state['Privacy_Achieved'] = False
+                        st.session_state['Optimization_Logs'] += "❌ Binning Optimization failed to find a suitable configuration.\n"
+
                 except Exception as e:
                     st.error(f"❌ An error occurred during binning optimization: {e}")
                     st.error(traceback.format_exc())
+                    logger.error("An error occurred during binning optimization.", exc_info=True)
+
 
 
 

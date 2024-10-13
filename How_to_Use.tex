@@ -1,0 +1,318 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{titlesec}
+
+% Page settings
+\geometry{left=1in, right=1in, top=1in, bottom=1in}
+
+% Header and Footer
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{User Guide}}
+\fancyhead[R]{\textbf{Dynamic De-Identification Application}}
+\fancyfoot[C]{\thepage}
+
+% Section formatting
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection}{1em}{}
+
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+\titleformat{\subsubsection}
+  {\normalfont\normalsize\bfseries}{\thesubsubsection}{1em}{}
+
+% Document Title
+\title{User Guide for Dynamic De-Identification Application}
+\author{Your Company Name}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+Welcome to the \textbf{Dynamic De-Identification} application user guide. This application is designed to assist users in processing, anonymizing, and generating synthetic data to ensure data privacy and compliance with various privacy models. The application leverages powerful Python libraries and Streamlit for an interactive user experience.
+
+\section{Prerequisites}
+Before using the application, ensure that you have the following installed on your system:
+
+\begin{itemize}
+    \item \textbf{Python 3.7 or higher}
+    \item \textbf{pip} (Python package installer)
+    \item \textbf{Virtual Environment (optional but recommended)}
+\end{itemize}
+
+\subsection{Installing Python}
+Download and install Python from the official website: \href{https://www.python.org/downloads/}{https://www.python.org/downloads/}.
+
+\subsection{Setting Up a Virtual Environment (Optional)}
+Creating a virtual environment helps manage dependencies and avoid conflicts.
+
+\begin{verbatim}
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+\end{verbatim}
+
+\section{Installation}
+Follow these steps to install and set up the Dynamic De-Identification application.
+
+\subsection{Clone the Repository}
+Clone the application repository from GitHub (replace the URL with your repository):
+
+\begin{verbatim}
+git clone https://github.com/yourusername/dynamic-deidentification.git
+cd dynamic-deidentification
+\end{verbatim}
+
+\subsection{Install Dependencies}
+Install the required Python packages using pip:
+
+\begin{verbatim}
+pip install -r requirements.txt
+\end{verbatim}
+
+\textbf{Note:} Ensure that the `requirements.txt` file includes all necessary packages such as Streamlit, pandas, matplotlib, etc.
+
+
+\section{Running the Application}
+To launch the Streamlit application, navigate to the project directory and execute:
+
+\begin{verbatim}
+streamlit run application.py
+\end{verbatim}
+
+This command will start the application and open it in your default web browser.
+
+\section{Application Overview}
+The Dynamic De-Identification application is organized into several tabs, each serving a specific function in the data processing and anonymization workflow. Below is an overview of each tab and its functionalities.
+
+\subsection{Main Components}
+\begin{itemize}
+    \item \textbf{Sidebar:} Upload datasets, configure settings, and access application information.
+    \item \textbf{Tabs:} Navigate through different functionalities such as Binning, Location Granularizer, Unique Identification Analysis, Data Anonymization, Synthetic Data Generation, and Help.
+    \item \textbf{Logs:} Optionally display application logs for monitoring processes.
+\end{itemize}
+
+\section{Using the Application}
+Follow the steps below to effectively use each feature of the application.
+
+\subsection{1. Uploading Data}
+\begin{enumerate}
+    \item Navigate to the \textbf{Sidebar} on the left.
+    \item Under \textbf{Upload \& Settings}, click on \textbf{Upload your dataset}.
+    \item Select a CSV (\texttt{.csv}) or Pickle (\texttt{.pkl}) file from your local machine.
+    \item Choose the desired output file type (\texttt{csv} or \texttt{pkl}) from the dropdown menu.
+\end{enumerate}
+
+\subsection{2. Configuring Data Processing Settings}
+\begin{enumerate}
+    \item In the \textbf{Sidebar}, locate the \textbf{Data Processing Settings} section.
+    \item Adjust the following parameters as needed:
+    \begin{itemize}
+        \item \textbf{Date Detection Threshold}: Sets the sensitivity for detecting date columns.
+        \item \textbf{Numeric Detection Threshold}: Determines the threshold for identifying numeric columns.
+        \item \textbf{Factor Threshold Ratio}: Ratio used in factor detection.
+        \item \textbf{Factor Threshold Unique}: Unique value threshold for factor columns.
+        \item \textbf{Day First in Dates}: Checkbox to specify date format.
+        \item \textbf{Convert Factors to Integers}: Checkbox to convert factor columns.
+        \item \textbf{Date Format}: Specify the date format if known (e.g., \texttt{\%Y-\%m-\%d}).
+    \end{itemize}
+\end{enumerate}
+
+\subsection{3. Manual Binning}
+\label{sec:manual_binning}
+\begin{enumerate}
+    \item Click on the \textbf{Manual Binning} tab.
+    \item Under \textbf{Select Columns to Bin}, choose the columns you wish to bin from the available options.
+    \item The application will display binning configurations based on your selection.
+    \item Toggle the \textbf{Start Dynamic Binning} checkbox to initiate the binning process.
+    \item Upon completion, you can:
+    \begin{itemize}
+        \item Run an integrity report to assess data integrity post-binning.
+        \item Perform association rule mining with configurable support and confidence thresholds.
+        \item Generate density plots for visual analysis.
+        \item Download the binned data for external use.
+    \end{itemize}
+\end{enumerate}
+
+\subsection{4. Location Data Geocoding Granularizer}
+\label{sec:location_granularizer}
+\begin{enumerate}
+    \item Navigate to the \textbf{Location Data Geocoding Granulariser} tab.
+    \item The application will automatically detect geographical columns.
+    \item Select the column(s) you want to geocode.
+    \item Click on \textbf{Start Geocoding} to initiate the geocoding process.
+    \item After geocoding:
+    \begin{itemize}
+        \item Choose the desired granularity level (e.g., address, city, state).
+        \item Generate granular location columns based on the selected granularity.
+        \item Optionally, visualize the geocoded data on a map.
+    \end{itemize}
+\end{enumerate}
+
+\subsection{5. Unique Identification Analysis}
+\label{sec:unique_identification}
+\begin{enumerate}
+    \item Select the \textbf{Unique Identification Analysis} tab.
+    \item The application will display selected columns from previous steps (Binning and Location Granularizer).
+    \item Configure the analysis by specifying:
+    \begin{itemize}
+        \item \textbf{Minimum Combination Size}: The smallest number of columns to consider in combinations.
+        \item \textbf{Maximum Combination Size}: The largest number of columns to consider.
+    \end{itemize}
+    \item Click on \textbf{Perform Unique Identification Analysis} to execute.
+    \item Review the results, which include:
+    \begin{itemize}
+        \item Unique identification metrics.
+        \item Integrity loss reports.
+        \item Density distribution plots.
+        \item Option to download the analysis results.
+    \end{itemize}
+\end{enumerate}
+
+\subsection{6. Data Anonymization}
+\label{sec:data_anonymization}
+\begin{enumerate}
+    \item Access the \textbf{Data Anonymization} tab.
+    \item Configure anonymization settings:
+    \begin{itemize}
+        \item Select the desired privacy model (\textbf{k-anonymity}, \textbf{l-diversity}, or \textbf{t-closeness}).
+        \item Specify parameters such as:
+        \begin{itemize}
+            \item \textbf{k}: The anonymity level.
+            \item \textbf{l}: The diversity level (for l-diversity).
+            \item \textbf{t}: The closeness threshold (for t-closeness).
+        \end{itemize}
+        \item Select sensitive attributes if applicable.
+    \end{itemize}
+    \item Configure binning settings:
+    \begin{itemize}
+        \item Choose columns to bin.
+        \item Define minimum and maximum bins per column.
+        \item Select the binning method (\textbf{quantile} or \textbf{equal width}).
+        \item Choose the optimization method (\textbf{genetic algorithm} or \textbf{simulated annealing}).
+        \item Set optimizer-specific hyperparameters.
+    \end{itemize}
+    \item Click on \textbf{Optimize Binning} to start the anonymization process.
+    \item Upon completion, review:
+    \begin{itemize}
+        \item Best binning configuration.
+        \item Binned data samples.
+        \item Optimization summaries and plots.
+        \item Privacy compliance visualizations.
+        \item Options to download the anonymized data and configurations.
+    \end{itemize}
+\end{enumerate}
+
+\subsection{7. Synthetic Data Generation}
+\label{sec:synthetic_data_generation}
+\begin{enumerate}
+    \item Select the \textbf{Synthetic Data Generation} tab.
+    \item Choose the columns to include in the synthetic data generation process.
+    \item The application will automatically detect and display data types (Datetime, Categorical, Numerical).
+    \item Optionally, adjust column data types as needed.
+    \item Handle missing values by selecting an appropriate strategy:
+    \begin{itemize}
+        \item Drop rows with missing values.
+        \item Mean, median, or mode imputation.
+        \item Fill with a specific value.
+    \end{itemize}
+    \item Select the synthetic data generation method (\textbf{CTGAN} or \textbf{Gaussian Copula}).
+    \item Configure model parameters based on the chosen method.
+    \item Specify the number of synthetic samples to generate.
+    \item Click on \textbf{Generate Synthetic Data} to start the process.
+    \item After generation, review:
+    \begin{itemize}
+        \item Synthetic data samples.
+        \item Option to download the synthetic dataset.
+        \item Comparative distribution plots between original and synthetic data.
+    \end{itemize}
+\end{enumerate}
+
+\section{Help \& Documentation}
+Access the \textbf{Help \& Documentation} tab for additional guidance and best practices.
+
+\subsection{Using the Help Tab}
+\begin{itemize}
+    \item \textbf{How to Use This Application:} Step-by-step instructions similar to this guide.
+    \item \textbf{Understanding the Settings:} Detailed explanations of binning methods and anonymization models.
+    \item \textbf{Best Practices:} Recommendations for effective data anonymization and synthetic data generation.
+    \item \textbf{Troubleshooting:} Common issues and their resolutions.
+\end{itemize}
+
+\section{Advanced Features}
+\subsection{Session State Information}
+\begin{itemize}
+    \item The application maintains a \textbf{Session State} to track user interactions and data processing steps.
+    \item Access detailed session information through the \textbf{Session State Info} expander in the sidebar.
+    \item Monitor session state logs and variable types for debugging and transparency.
+\end{itemize}
+
+\subsection{Logging}
+\begin{itemize}
+    \item Application logs are stored in the \texttt{logs/app.log} file.
+    \item Optionally display logs within the application interface by enabling the \textbf{Show Logs in Interface} checkbox in the sidebar.
+    \item Logs provide insights into the application's operations and help in troubleshooting errors.
+\end{itemize}
+
+\section{Data Management}
+\subsection{Data Loading and Saving}
+\begin{itemize}
+    \item Uploaded datasets are saved in the \texttt{data/} directory.
+    \item Processed data is stored in the \texttt{processed\_data/} directory.
+    \item Reports and analysis results are saved in the \texttt{reports/} directory.
+    \item Logs are maintained in the \texttt{logs/} directory.
+\end{itemize}
+
+\subsection{Downloading Results}
+\begin{itemize}
+    \item After each processing step, use the provided download buttons to export results in CSV or Pickle formats.
+    \item Download options are available for:
+    \begin{itemize}
+        \item Binned data.
+        \item Binning configurations.
+        \item Integrity reports.
+        \item Unique identification analysis results.
+        \item Anonymized datasets.
+        \item Synthetic datasets.
+    \end{itemize}
+\end{itemize}
+
+\section{Best Practices}
+\begin{itemize}
+    \item \textbf{Start with Default Settings:} Familiarize yourself with the application's workflow before customizing settings.
+    \item \textbf{Validate Anonymization:} Always review integrity loss reports and privacy compliance visualizations to ensure data privacy.
+    \item \textbf{Backup Original Data:} Maintain a backup of your original datasets before performing any processing or anonymization.
+    \item \textbf{Monitor Logs:} Regularly check application logs for any errors or warnings during data processing.
+    \item \textbf{Optimize Parameters:} Experiment with different binning and anonymization parameters to achieve the best balance between data utility and privacy.
+\end{itemize}
+
+\section{Troubleshooting}
+\subsection{Common Issues}
+\begin{itemize}
+    \item \textbf{Unsupported File Type:} Ensure that you upload data in CSV (\texttt{.csv}) or Pickle (\texttt{.pkl}) formats.
+    \item \textbf{Missing Columns:} Verify that selected columns exist in both original and processed datasets.
+    \item \textbf{Privacy Not Achieved:} Adjust anonymization parameters or select different sensitive attributes to meet privacy requirements.
+    \item \textbf{Model Training Errors:} Check data types and handle missing values appropriately before generating synthetic data.
+\end{itemize}
+
+\subsection{Accessing Logs}
+\begin{itemize}
+    \item Enable the \textbf{Show Logs in Interface} option to view real-time logs.
+    \item Alternatively, access the \texttt{logs/app.log} file for detailed logs.
+\end{itemize}
+
+\section{Conclusion}
+The Dynamic De-Identification application provides a robust framework for data anonymization and synthetic data generation, ensuring data privacy while maintaining data utility. By following this guide, users can effectively leverage the application's features to process and protect their datasets.
+
+\end{document}

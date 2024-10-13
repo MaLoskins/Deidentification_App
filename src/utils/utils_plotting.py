@@ -379,7 +379,11 @@ def compare_correlations(original_df, synthetic_df, categorical_columns):
         st.error(traceback.format_exc())
 
 
+# src/utils/utils_plotting.py
+
+import matplotlib.pyplot as plt
 from typing import List
+import pandas as pd
 
 def plot_fitness_history(fitness_history: List[float], title: str) -> plt.Figure:
     """Plots the fitness over iterations."""
@@ -403,28 +407,42 @@ def plot_time_taken(times: List[float], title: str) -> plt.Figure:
 
 def plot_comparative_distributions(original_df: pd.DataFrame, binned_df: pd.DataFrame, columns: List[str]) -> plt.Figure:
     """Plots comparative distributions between original and binned data."""
-    num_columns = len(columns)
-    fig, axes = plt.subplots(num_columns, 2, figsize=(15, 5 * num_columns))
+    try:
+        num_columns = len(columns)
+        fig, axes = plt.subplots(num_columns, 2, figsize=(15, 5 * num_columns))
 
-    if num_columns == 1:
-        axes = [axes]
+        if num_columns == 1:
+            axes = [axes]
+        else:
+            axes = axes
 
-    for idx, col in enumerate(columns):
-        # Original data histogram
-        ax_orig = axes[idx][0]
-        ax_orig.hist(original_df[col].dropna(), bins=30, color='blue', alpha=0.7)
-        ax_orig.set_title(f"Original Data - {col}")
-        ax_orig.set_xlabel(col)
-        ax_orig.set_ylabel("Frequency")
+        for idx, col in enumerate(columns):
+            # Original data histogram
+            ax_orig = axes[idx][0]
+            if pd.api.types.is_numeric_dtype(original_df[col]):
+                ax_orig.hist(original_df[col].dropna(), bins=30, color='blue', alpha=0.7)
+            else:
+                original_counts = original_df[col].value_counts()
+                ax_orig.bar(original_counts.index.astype(str), original_counts.values, color='blue', alpha=0.7)
+                ax_orig.tick_params(axis='x', rotation=45)
+            ax_orig.set_title(f"Original Data - {col}")
+            ax_orig.set_xlabel(col)
+            ax_orig.set_ylabel("Frequency")
 
-        # Binned data bar chart
-        ax_binned = axes[idx][1]
-        binned_counts = binned_df[col].value_counts().sort_index()
-        ax_binned.bar(binned_counts.index.astype(str), binned_counts.values, color='green', alpha=0.7)
-        ax_binned.set_title(f"Binned Data - {col}")
-        ax_binned.set_xlabel("Bins")
-        ax_binned.set_ylabel("Frequency")
-        plt.setp(ax_binned.get_xticklabels(), rotation=45, ha='right')
+            # Binned data bar chart
+            ax_binned = axes[idx][1]
+            if pd.api.types.is_numeric_dtype(binned_df[col]):
+                binned_df[col].value_counts().plot(kind='bar', ax=ax_binned, color='green', alpha=0.7)
+            else:
+                binned_counts = binned_df[col].value_counts().sort_index()
+                ax_binned.bar(binned_counts.index.astype(str), binned_counts.values, color='green', alpha=0.7)
+                ax_binned.tick_params(axis='x', rotation=45)
+            ax_binned.set_title(f"Binned Data - {col}")
+            ax_binned.set_xlabel("Bins")
+            ax_binned.set_ylabel("Frequency")
 
-    plt.tight_layout()
-    return fig
+        plt.tight_layout()
+        return fig
+    except Exception as e:
+        print(f"Error in plotting comparative distributions: {e}")
+        return plt.Figure()
