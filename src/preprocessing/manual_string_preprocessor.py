@@ -23,8 +23,12 @@ class ManualStringPreprocessor:
     def select_column(self):
         """Allow the user to select a column to process."""
         data_columns = self.data.columns.tolist()
-        self.selected_column = st.selectbox("Select a column to process", options=data_columns, index=None, help="Tool currently supports Clinic Name and Isolated Organisms columns.")
-        
+        self.selected_column = st.selectbox(
+            "Select a column to process",
+            options=data_columns,
+            index=None,
+            help="Tool currently supports Clinic Name and Isolated Organisms columns."
+        )
 
     def upload_mapping_file(self):
         """Handle the upload of a mapping file."""
@@ -33,7 +37,7 @@ class ManualStringPreprocessor:
             mapping_raw = mapping_file.getvalue().decode("utf-8")
             try:
                 self.mapping = ast.literal_eval(mapping_raw)
-                st.write("Mapping file uploaded!")
+                st.success("Mapping file uploaded successfully!")
             except (ValueError, SyntaxError) as e:
                 st.error(f"Error reading mapping file: {e}")
                 st.stop()
@@ -141,25 +145,36 @@ class ManualStringPreprocessor:
 
             keys = list(clinic_names_matches.keys())
 
+            # Create 4 columns for better layout
+            columns = st.columns(4)
+
             for i, key in enumerate(keys):
-                st.markdown(f"**Location {i+1}:** {key}")
-                options = clinic_names_matches[key] + ['Keep as is', 'Type in replacement..']
-                value = st.selectbox(f"Select replacement:", options=options, key=f"replace_{i}")
+                current_col = columns[i % 4]
+                with current_col:
+                    st.markdown(f"**Location {i+1}:** {key}")
+                    options = clinic_names_matches[key] + ['Keep as is', 'Type in replacement..']
+                    value = st.selectbox(
+                        "Select replacement:",
+                        options=options,
+                        key=f"replace_{i}"
+                    )
 
-                if value == 'Type in replacement..':
-                    other_rep = st.text_input('Type in replacement..', key=f"other_{i}")
-                else:
                     other_rep = ''
+                    if value == 'Type in replacement..':
+                        other_rep = st.text_input(
+                            "Type in replacement:",
+                            key=f"other_{i}"
+                        )
 
-                if value == 'Keep as is':
-                    self.mapping[key] = key
-                elif value == 'Type in replacement..':
-                    if other_rep.strip():
-                        self.mapping[key] = other_rep.strip()
+                    if value == 'Keep as is':
+                        self.mapping[key] = key
+                    elif value == 'Type in replacement..':
+                        if other_rep.strip():
+                            self.mapping[key] = other_rep.strip()
+                        else:
+                            st.warning(f"Please enter a replacement for '{key}'.")
                     else:
-                        st.warning(f"Please enter a replacement for '{key}'.")
-                else:
-                    self.mapping[key] = value
+                        self.mapping[key] = value
 
             if st.button("Review replacements"):
                 self.session_state['review_replacements'] = True
@@ -195,7 +210,11 @@ class ManualStringPreprocessor:
 
             col1, col2 = st.columns(2)
             with col1:
-                st.download_button("Download mapping file", str(self.mapping), file_name='clin_names_mapping.txt')
+                st.download_button(
+                    "Download mapping file",
+                    str(self.mapping),
+                    file_name='clin_names_mapping.txt'
+                )
             with col2:
                 st.download_button(
                     label="Download processed data as CSV",
@@ -209,7 +228,11 @@ class ManualStringPreprocessor:
         organism_groups = self.get_isolated_org_matches()
         group_letters = sorted(organism_groups.keys())
 
-        selected_group = st.selectbox("Select a batch to process (by first letter of genus):", group_letters, index=None)
+        selected_group = st.selectbox(
+            "Select a batch to process (by first letter of genus):",
+            group_letters,
+            index=None
+        )
         if selected_group is not None:
             batch_organisms = organism_groups[selected_group]
             isolated_org_names_matches = {}
@@ -240,25 +263,36 @@ class ManualStringPreprocessor:
 
                 keys = list(isolated_org_names_matches.keys())
 
+                # Create 4 columns for better layout
+                columns = st.columns(4)
+
                 for i, key in enumerate(keys):
-                    st.markdown(f"**Isolated Organism {i+1}:** {key}")
-                    options = isolated_org_names_matches[key] + ['Keep as is', 'Type in replacement..']
-                    value = st.selectbox(f"Select replacement:", options=options, key=f"iso_rep_{i}")
+                    current_col = columns[i % 4]
+                    with current_col:
+                        st.markdown(f"**Isolated Organism {i+1}:** {key}")
+                        options = isolated_org_names_matches[key] + ['Keep as is', 'Type in replacement..']
+                        value = st.selectbox(
+                            "Select replacement:",
+                            options=options,
+                            key=f"iso_rep_{i}"
+                        )
 
-                    if value == 'Type in replacement..':
-                        other_rep = st.text_input("Type in your replacement:", key=f"iso_other_{i}")
-                    else:
                         other_rep = ''
+                        if value == 'Type in replacement..':
+                            other_rep = st.text_input(
+                                "Type in your replacement:",
+                                key=f"iso_other_{i}"
+                            )
 
-                    if value == 'Keep as is':
-                        self.session_state['user_mappings'][key] = key
-                    elif value == 'Type in replacement..':
-                        if other_rep.strip():
-                            self.session_state['user_mappings'][key] = other_rep.strip()
+                        if value == 'Keep as is':
+                            self.session_state['user_mappings'][key] = key
+                        elif value == 'Type in replacement..':
+                            if other_rep.strip():
+                                self.session_state['user_mappings'][key] = other_rep.strip()
+                            else:
+                                st.warning(f"Please enter a replacement for '{key}'.")
                         else:
-                            st.warning(f"Please enter a replacement for '{key}'.")
-                    else:
-                        self.session_state['user_mappings'][key] = value
+                            self.session_state['user_mappings'][key] = value
 
                 if st.button("Review replacements"):
                     self.session_state['review_replacements'] = True
@@ -312,7 +346,11 @@ class ManualStringPreprocessor:
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.download_button("Download mapping file", str(self.mapping), file_name='isolated_organisms_mapping.txt')
+                    st.download_button(
+                        "Download mapping file",
+                        str(self.mapping),
+                        file_name='isolated_organisms_mapping.txt'
+                    )
                 with col2:
                     st.download_button(
                         label="Download processed data as CSV",
@@ -330,7 +368,10 @@ class ManualStringPreprocessor:
             self.select_column()
 
             if self.selected_column in ["Clinic Name", "Isolated Organisms"]:
-                has_mapping_file = st.radio("Do you have a mapping file (TXT) for this column?", ("Yes", "No"))
+                has_mapping_file = st.radio(
+                    "Do you have a mapping file (TXT) for this column?",
+                    ("Yes", "No")
+                )
                 if has_mapping_file == "Yes":
                     self.upload_mapping_file()
                 else:
@@ -346,6 +387,6 @@ class ManualStringPreprocessor:
             elif self.selected_column is None:
                 st.info("Please select a column to process.")
             else:
-                st.write(f"Column {self.selected_column} is not supported.")
+                st.write(f"Column '{self.selected_column}' is not supported.")
         else:
             st.write("Please upload a CSV file to begin.")
